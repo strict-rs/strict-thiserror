@@ -1,20 +1,20 @@
 [package]
 name = "thiserror-impl"
-version = "2.0.18"
-authors = ["David Tolnay <dtolnay@gmail.com>"]
+version.workspace = true
+authors.workspace = true
 description = "Implementation detail of the `thiserror` crate"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/dtolnay/thiserror"
-rust-version = "1.71"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0.74"
-quote = "1.0.35"
-syn = "2.0.87"
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

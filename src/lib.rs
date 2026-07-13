@@ -19,17 +19,14 @@
 //!
 //! #[derive(Error, Debug)]
 //! pub enum DataStoreError {
-//!     #[error("data store disconnected")]
-//!     Disconnect(#[from] io::Error),
-//!     #[error("the data for key `{0}` is not available")]
-//!     Redaction(String),
-//!     #[error("invalid header (expected {expected:?}, found {found:?})")]
-//!     InvalidHeader {
-//!         expected: String,
-//!         found: String,
-//!     },
-//!     #[error("unknown data store error")]
-//!     Unknown,
+//!   #[error("data store disconnected")]
+//!   Disconnect(#[from] io::Error),
+//!   #[error("the data for key `{0}` is not available")]
+//!   Redaction(String),
+//!   #[error("invalid header (expected {expected:?}, found {found:?})")]
+//!   InvalidHeader { expected: String, found: String },
+//!   #[error("unknown data store error")]
+//!   Unknown,
 //! }
 //! ```
 //!
@@ -37,17 +34,14 @@
 //!
 //! # Details
 //!
-//! - Thiserror deliberately does not appear in your public API. You get the
-//!   same thing as if you had written an implementation of
-//!   [`std::error::Error`] by hand, and switching from handwritten impls to
-//!   thiserror or vice versa is not a breaking change.
+//! - Thiserror deliberately does not appear in your public API. You get the same thing as if you
+//!   had written an implementation of [`std::error::Error`] by hand, and switching from handwritten
+//!   impls to thiserror or vice versa is not a breaking change.
 //!
-//! - Errors may be enums, structs with named fields, tuple structs, or unit
-//!   structs.
+//! - Errors may be enums, structs with named fields, tuple structs, or unit structs.
 //!
-//! - A [`Display`] impl is generated for your error if you provide
-//!   `#[error("...")]` messages on the struct or each variant of your enum, as
-//!   shown above in the example.
+//! - A [`Display`] impl is generated for your error if you provide `#[error("...")]` messages on
+//!   the struct or each variant of your enum, as shown above in the example.
 //!
 //!   The messages support a shorthand for interpolating fields from the error.
 //!
@@ -91,13 +85,12 @@
 //!   pub enum Error {
 //!       #[error("first letter must be lowercase but was {:?}", first_char(.0))]
 //!       WrongCase(String),
-//!       #[error("invalid index {idx}, expected at least {} and at most {}", .limits.lo, .limits.hi)]
-//!       OutOfBounds { idx: usize, limits: Limits },
+//!       #[error("invalid index {idx}, expected at least {} and at most {}", .limits.lo,
+//! .limits.hi)]       OutOfBounds { idx: usize, limits: Limits },
 //!   }
 //!   ```
 //!
-//! - A [`From`] impl is generated for each variant that contains a `#[from]`
-//!   attribute.
+//! - A [`From`] impl is generated for each variant that contains a `#[from]` attribute.
 //!
 //!   The variant using `#[from]` must not contain any other fields beyond the
 //!   source error (and possibly a backtrace &mdash; see below). Usually
@@ -128,9 +121,9 @@
 //!   # }
 //!   ```
 //!
-//! - The Error trait's [`source()`] method is implemented to return whichever
-//!   field has a `#[source]` attribute or is named `source`, if any. This is
-//!   for identifying the underlying lower level error that caused your error.
+//! - The Error trait's [`source()`] method is implemented to return whichever field has a
+//!   `#[source]` attribute or is named `source`, if any. This is for identifying the underlying
+//!   lower level error that caused your error.
 //!
 //!   The `#[from]` attribute always implies that the same field is `#[source]`,
 //!   so you don't ever need to specify both attributes.
@@ -156,10 +149,9 @@
 //!   # }
 //!   ```
 //!
-//! - The Error trait's [`provide()`] method is implemented to provide whichever
-//!   field has a type named `Backtrace`, if any, as a
-//!   [`std::backtrace::Backtrace`]. Using `Backtrace` in errors requires a
-//!   nightly compiler with Rust version 1.73 or newer.
+//! - The Error trait's [`provide()`] method is implemented to provide whichever field has a type
+//!   named `Backtrace`, if any, as a [`std::backtrace::Backtrace`]. Using `Backtrace` in errors
+//!   requires a nightly compiler with Rust version 1.73 or newer.
 //!
 //!   ```rust
 //!   # const IGNORE: &str = stringify! {
@@ -173,11 +165,10 @@
 //!   # };
 //!   ```
 //!
-//! - If a field is both a source (named `source`, or has `#[source]` or
-//!   `#[from]` attribute) *and* is marked `#[backtrace]`, then the Error
-//!   trait's [`provide()`] method is forwarded to the source's `provide` so
-//!   that both layers of the error share the same backtrace. The `#[backtrace]`
-//!   attribute requires a nightly compiler with Rust version 1.73 or newer.
+//! - If a field is both a source (named `source`, or has `#[source]` or `#[from]` attribute) *and*
+//!   is marked `#[backtrace]`, then the Error trait's [`provide()`] method is forwarded to the
+//!   source's `provide` so that both layers of the error share the same backtrace. The
+//!   `#[backtrace]` attribute requires a nightly compiler with Rust version 1.73 or newer.
 //!
 //!   ```rust
 //!   # const IGNORE: &str = stringify! {
@@ -191,8 +182,8 @@
 //!   # };
 //!   ```
 //!
-//! - For variants that use `#[from]` and also contain a `Backtrace` field, a
-//!   backtrace is captured from within the `From` impl.
+//! - For variants that use `#[from]` and also contain a `Backtrace` field, a backtrace is captured
+//!   from within the `From` impl.
 //!
 //!   ```rust
 //!   # const IGNORE: &str = stringify! {
@@ -207,10 +198,9 @@
 //!   # };
 //!   ```
 //!
-//! - Errors may use `error(transparent)` to forward the source and [`Display`]
-//!   methods straight through to an underlying error without adding an
-//!   additional message. This would be appropriate for enums that need an
-//!   "anything else" variant.
+//! - Errors may use `error(transparent)` to forward the source and [`Display`] methods straight
+//!   through to an underlying error without adding an additional message. This would be appropriate
+//!   for enums that need an "anything else" variant.
 //!
 //!   ```
 //!   # use thiserror::Error;
@@ -251,8 +241,7 @@
 //!   }
 //!   ```
 //!
-//! - See also the [`anyhow`] library for a convenient single error type to use
-//!   in application code.
+//! - See also the [`anyhow`] library for a convenient single error type to use in application code.
 //!
 //! [`anyhow`]: https://github.com/dtolnay/anyhow
 //! [`source()`]: std::error::Error::source
@@ -262,11 +251,11 @@
 #![no_std]
 #![doc(html_root_url = "https://docs.rs/thiserror/2.0.18")]
 #![allow(
-    clippy::elidable_lifetime_names,
-    clippy::module_name_repetitions,
-    clippy::needless_lifetimes,
-    clippy::return_self_not_must_use,
-    clippy::wildcard_imports
+  clippy::elidable_lifetime_names,
+  clippy::module_name_repetitions,
+  clippy::needless_lifetimes,
+  clippy::return_self_not_must_use,
+  clippy::wildcard_imports
 )]
 #![cfg_attr(error_generic_member_access, feature(error_generic_member_access))]
 

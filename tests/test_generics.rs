@@ -1,7 +1,12 @@
 #![allow(clippy::needless_late_init, clippy::uninlined_format_args)]
 
-use core::fmt::{self, Debug, Display};
+use core::fmt::Debug;
+use core::fmt::Display;
+use core::fmt::{
+  self,
+};
 use core::str::FromStr;
+
 use thiserror::Error;
 
 pub struct NoFormat;
@@ -12,18 +17,18 @@ pub struct DebugOnly;
 pub struct DisplayOnly;
 
 impl Display for DisplayOnly {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("display only")
-    }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str("display only")
+  }
 }
 
 #[derive(Debug)]
 pub struct DebugAndDisplay;
 
 impl Display for DebugAndDisplay {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("debug and display")
-    }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str("debug and display")
+  }
 }
 
 // Should expand to:
@@ -38,8 +43,8 @@ impl Display for DebugAndDisplay {
 //
 #[derive(Error, Debug)]
 pub enum EnumDebugGeneric<E> {
-    #[error("{0:?}")]
-    FatalError(E),
+  #[error("{0:?}")]
+  FatalError(E),
 }
 
 // Should expand to:
@@ -53,8 +58,8 @@ pub enum EnumDebugGeneric<E> {
 //
 #[derive(Error, Debug)]
 pub enum EnumFromGeneric<E> {
-    #[error("enum from generic")]
-    Source(#[from] EnumDebugGeneric<E>),
+  #[error("enum from generic")]
+  Source(#[from] EnumDebugGeneric<E>),
 }
 
 // Should expand to:
@@ -72,32 +77,32 @@ pub enum EnumFromGeneric<E> {
 //
 #[derive(Error)]
 pub enum EnumCompound<HasDisplay, HasDebug, HasNeither> {
-    #[error("{0} {1:?}")]
-    DisplayDebug(HasDisplay, HasDebug),
-    #[error("{0}")]
-    Display(HasDisplay, HasNeither),
-    #[error("{1:?}")]
-    Debug(HasNeither, HasDebug),
+  #[error("{0} {1:?}")]
+  DisplayDebug(HasDisplay, HasDebug),
+  #[error("{0}")]
+  Display(HasDisplay, HasNeither),
+  #[error("{1:?}")]
+  Debug(HasNeither, HasDebug),
 }
 
 impl<HasDisplay, HasDebug, HasNeither> Debug for EnumCompound<HasDisplay, HasDebug, HasNeither> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("EnumCompound")
-    }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str("EnumCompound")
+  }
 }
 
 #[test]
 fn test_display_enum_compound() {
-    let mut instance: EnumCompound<DisplayOnly, DebugOnly, NoFormat>;
+  let mut instance: EnumCompound<DisplayOnly, DebugOnly, NoFormat>;
 
-    instance = EnumCompound::DisplayDebug(DisplayOnly, DebugOnly);
-    assert_eq!(format!("{}", instance), "display only DebugOnly");
+  instance = EnumCompound::DisplayDebug(DisplayOnly, DebugOnly);
+  assert_eq!(format!("{}", instance), "display only DebugOnly");
 
-    instance = EnumCompound::Display(DisplayOnly, NoFormat);
-    assert_eq!(format!("{}", instance), "display only");
+  instance = EnumCompound::Display(DisplayOnly, NoFormat);
+  assert_eq!(format!("{}", instance), "display only");
 
-    instance = EnumCompound::Debug(NoFormat, DebugOnly);
-    assert_eq!(format!("{}", instance), "DebugOnly");
+  instance = EnumCompound::Debug(NoFormat, DebugOnly);
+  assert_eq!(format!("{}", instance), "DebugOnly");
 }
 
 // Should expand to:
@@ -113,8 +118,8 @@ fn test_display_enum_compound() {
 //
 #[derive(Error, Debug)]
 pub enum EnumTransparentGeneric<E> {
-    #[error(transparent)]
-    Other(E),
+  #[error(transparent)]
+  Other(E),
 }
 
 // Should expand to:
@@ -130,7 +135,7 @@ pub enum EnumTransparentGeneric<E> {
 #[derive(Error, Debug)]
 #[error("{underlying:?}")]
 pub struct StructDebugGeneric<E> {
-    pub underlying: E,
+  pub underlying: E,
 }
 
 // Should expand to:
@@ -142,8 +147,8 @@ pub struct StructDebugGeneric<E> {
 //
 #[derive(Error, Debug)]
 pub struct StructFromGeneric<E> {
-    #[from]
-    pub source: StructDebugGeneric<E>,
+  #[from]
+  pub source: StructDebugGeneric<E>,
 }
 
 // Should expand to:
@@ -173,33 +178,37 @@ pub struct StructTransparentGeneric<E>(pub E);
 //
 #[derive(Error, Debug)]
 pub enum AssociatedTypeError<T: FromStr> {
-    #[error("couldn't parse matrix")]
-    Other,
-    #[error("couldn't parse entry: {0}")]
-    EntryParseError(T::Err),
+  #[error("couldn't parse matrix")]
+  Other,
+  #[error("couldn't parse entry: {0}")]
+  EntryParseError(T::Err),
 }
 
 // Regression test for https://github.com/dtolnay/thiserror/issues/345
 #[test]
 fn test_no_bound_on_named_fmt() {
-    #[derive(Error, Debug)]
-    #[error("{thing}", thing = "...")]
-    struct Error<T> {
-        thing: T,
-    }
+  #[derive(Error, Debug)]
+  #[error("{thing}", thing = "...")]
+  struct Error<T> {
+    thing: T,
+  }
 
-    let error = Error { thing: DebugOnly };
-    assert_eq!(error.to_string(), "...");
+  let error = Error {
+    thing: DebugOnly
+  };
+  assert_eq!(error.to_string(), "...");
 }
 
 #[test]
 fn test_multiple_bound() {
-    #[derive(Error, Debug)]
-    #[error("0x{thing:x} 0x{thing:X}")]
-    pub struct Error<T> {
-        thing: T,
-    }
+  #[derive(Error, Debug)]
+  #[error("0x{thing:x} 0x{thing:X}")]
+  pub struct Error<T> {
+    thing: T,
+  }
 
-    let error = Error { thing: 0xFFi32 };
-    assert_eq!(error.to_string(), "0xff 0xFF");
+  let error = Error {
+    thing: 0xFFi32
+  };
+  assert_eq!(error.to_string(), "0xff 0xFF");
 }

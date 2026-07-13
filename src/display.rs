@@ -1,45 +1,51 @@
 use core::fmt::Display;
 #[cfg(feature = "std")]
-use std::path::{self, Path, PathBuf};
+use std::path::Path;
+#[cfg(feature = "std")]
+use std::path::PathBuf;
+#[cfg(feature = "std")]
+use std::path::{
+  self,
+};
 
 #[doc(hidden)]
 pub trait AsDisplay<'a>: Sealed {
-    // TODO: convert to generic associated type.
-    // https://github.com/dtolnay/thiserror/pull/253
-    type Target: Display;
+  // TODO: convert to generic associated type.
+  // https://github.com/dtolnay/thiserror/pull/253
+  type Target: Display;
 
-    fn as_display(&'a self) -> Self::Target;
+  fn as_display(&'a self) -> Self::Target;
 }
 
 impl<'a, T> AsDisplay<'a> for &T
 where
-    T: Display + ?Sized + 'a,
+  T: Display + ?Sized + 'a,
 {
-    type Target = &'a T;
+  type Target = &'a T;
 
-    fn as_display(&'a self) -> Self::Target {
-        *self
-    }
+  fn as_display(&'a self) -> Self::Target {
+    *self
+  }
 }
 
 #[cfg(feature = "std")]
 impl<'a> AsDisplay<'a> for Path {
-    type Target = path::Display<'a>;
+  type Target = path::Display<'a>;
 
-    #[inline]
-    fn as_display(&'a self) -> Self::Target {
-        self.display()
-    }
+  #[inline]
+  fn as_display(&'a self) -> Self::Target {
+    self.display()
+  }
 }
 
 #[cfg(feature = "std")]
 impl<'a> AsDisplay<'a> for PathBuf {
-    type Target = path::Display<'a>;
+  type Target = path::Display<'a>;
 
-    #[inline]
-    fn as_display(&'a self) -> Self::Target {
-        self.display()
-    }
+  #[inline]
+  fn as_display(&'a self) -> Self::Target {
+    self.display()
+  }
 }
 
 #[doc(hidden)]
@@ -57,26 +63,31 @@ impl Sealed for PathBuf {}
 // unrelated crate.
 #[cfg(not(feature = "std"))]
 mod placeholder {
-    use super::{AsDisplay, Sealed};
-    use core::fmt::{self, Display};
+  use core::fmt::Display;
+  use core::fmt::{
+    self,
+  };
 
-    #[allow(dead_code)]
-    pub struct Placeholder;
+  use super::AsDisplay;
+  use super::Sealed;
 
-    impl<'a> AsDisplay<'a> for Placeholder {
-        type Target = Self;
+  #[allow(dead_code)]
+  pub struct Placeholder;
 
-        #[inline]
-        fn as_display(&'a self) -> Self::Target {
-            Placeholder
-        }
+  impl<'a> AsDisplay<'a> for Placeholder {
+    type Target = Self;
+
+    #[inline]
+    fn as_display(&'a self) -> Self::Target {
+      Placeholder
     }
+  }
 
-    impl Display for Placeholder {
-        fn fmt(&self, _formatter: &mut fmt::Formatter) -> fmt::Result {
-            unreachable!()
-        }
+  impl Display for Placeholder {
+    fn fmt(&self, _formatter: &mut fmt::Formatter) -> fmt::Result {
+      unreachable!()
     }
+  }
 
-    impl Sealed for Placeholder {}
+  impl Sealed for Placeholder {}
 }

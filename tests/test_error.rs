@@ -1,23 +1,27 @@
 #![allow(dead_code)]
 
-use core::fmt::{self, Display};
+use core::fmt::Display;
+use core::fmt::{
+  self,
+};
 use std::io;
+
 use thiserror::Error;
 
 macro_rules! unimplemented_display {
-    ($ty:ty) => {
-        impl Display for $ty {
-            fn fmt(&self, _formatter: &mut fmt::Formatter) -> fmt::Result {
-                unimplemented!()
-            }
-        }
-    };
+  ($ty:ty) => {
+    impl Display for $ty {
+      fn fmt(&self, _formatter: &mut fmt::Formatter) -> fmt::Result {
+        unimplemented!()
+      }
+    }
+  };
 }
 
 #[derive(Error, Debug)]
 struct BracedError {
-    msg: String,
-    pos: usize,
+  msg: String,
+  pos: usize,
 }
 
 #[derive(Error, Debug)]
@@ -28,24 +32,24 @@ struct UnitError;
 
 #[derive(Error, Debug)]
 struct WithSource {
-    #[source]
-    cause: io::Error,
+  #[source]
+  cause: io::Error,
 }
 
 #[derive(Error, Debug)]
 struct WithAnyhow {
-    #[source]
-    cause: anyhow::Error,
+  #[source]
+  cause: anyhow::Error,
 }
 
 #[derive(Error, Debug)]
 enum EnumError {
-    Braced {
-        #[source]
-        cause: io::Error,
-    },
-    Tuple(#[source] io::Error),
-    Unit,
+  Braced {
+    #[source]
+    cause: io::Error,
+  },
+  Tuple(#[source] io::Error),
+  Unit,
 }
 
 unimplemented_display!(BracedError);
