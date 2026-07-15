@@ -71,8 +71,8 @@
 //!   ```rust
 //!   # use thiserror::Error;
 //!   #
-//!   # fn first_char(s: &String) -> char {
-//!   #     s.chars().next().unwrap()
+//!   # fn first_char(s: &str) -> char {
+//!   #     s.chars().next().unwrap_or_default()
 //!   # }
 //!   #
 //!   # #[derive(Debug)]
@@ -85,8 +85,12 @@
 //!   pub enum Error {
 //!       #[error("first letter must be lowercase but was {:?}", first_char(.0))]
 //!       WrongCase(String),
-//!       #[error("invalid index {idx}, expected at least {} and at most {}", .limits.lo,
-//! .limits.hi)]       OutOfBounds { idx: usize, limits: Limits },
+//!       #[error(
+//!           "invalid index {idx}, expected at least {min} and at most {max}",
+//!           min = .limits.lo,
+//!           max = .limits.hi,
+//!       )]
+//!       OutOfBounds { idx: usize, limits: Limits },
 //!   }
 //!   ```
 //!

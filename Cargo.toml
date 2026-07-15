@@ -2,11 +2,11 @@
 name = "thiserror"
 version.workspace = true
 authors.workspace = true
-categories = ["rust-patterns", "no-std"]
+categories.workspace = true
 description = "derive(Error)"
 documentation = "https://docs.rs/thiserror"
 edition.workspace = true
-keywords = ["error", "error-handling", "derive"]
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -34,6 +34,7 @@ thiserror-impl = { workspace = true }
 anyhow.workspace = true
 ref-cast.workspace = true
 rustversion.workspace = true
+strict-test-support.workspace = true
 trybuild = { workspace = true, features = ["diff"] }
 
 [package.metadata.docs.rs]
@@ -74,15 +75,17 @@ publish      = false
 authors      = ["David Tolnay <dtolnay@gmail.com>", "Takumi Shimada <hello@takumi.earth>"]
 repository   = "https://github.com/strict-rs/strict-thiserror"
 readme       = "README.md"
+keywords     = ["error", "error-handling", "derive"]
+categories   = ["rust-patterns", "no-std"]
 
 # ─── Shared dependencies (populate here; members refer via `.workspace = true`) ─
 [workspace.dependencies]
 thiserror-impl = { version = "2.1.0", path = "impl" }
 thiserror = { version = "2.1.0", path = ".", default-features = false }
-anyhow = "1.0.73"
-ref-cast = "1.0.18"
-rustversion = "1.0.13"
-quote = "1.0.35"
+anyhow = "1.0.103"
+ref-cast = "1.0.25"
+rustversion = "1.0.23"
+quote = "1.0.46"
 
 # `rust-template`'s template-level `AGENTS.md` agent guidance.
 agents-md = { version = "0.1.0", git = "ssh://git@github.com/earthlings-dev/agents-md-rs.git", branch = "main" }
@@ -147,19 +150,19 @@ toml_edit = "0.25"
 # shared color policy.
 anstyle = "1"
 
-# Property testing — engine behind `strict_test_support::ensure_property`, used only
-# through its Result-based core (`TestRunner::run`); the panicking `proptest!` /
-# `prop_assert*` macro front doors are banned in clippy.toml. std-only: drops
+# Property testing — strategies come directly from `proptest`; property
+# execution uses `proptest::strict::ensure_property`. The panicking `proptest!`
+# / `prop_assert*` macro front doors are banned in clippy.toml. std-only: drops
 # the fork/timeout features (and their rusty-fork/tempfile subtree).
-proptest = { git = "ssh://git@github.com/strict-rs/strict-proptest.git", branch = "strict", version = "1.11", features = ["std"], default-features = false }
+proptest = { git = "ssh://git@github.com/strict-rs/strict-proptest.git", branch = "strict", version = "2", features = ["std", "strict-test"], default-features = false }
 
 # Snapshot testing — engine behind `strict_test_support::ensure_snapshot`, used only
 # through its Result-based core (`Assert::try_eq`). diff-only: the color
 # features are compiled out so rendered diffs are deterministic plain text.
 snapbox = { version = "1.2", features = ["diff"], default-features = false }
 
-# Compile-diagnostics testing — engine behind `strict_test_support::ensure_compile_fail`
-# / `ensure_compiles`, used only through its terminal-free `TestCases::try_run` core.
+# Compile-diagnostics testing — callers register both polarities on a mutable
+# `TestCases` collection and execute them through the typed `TestCases::run` API.
 # Maintained fork, pinned as a direct git dependency (not crates.io + `[patch]`, which
 # trybuild strips from the throwaway project it builds). The `version` field keeps it
 # from resolving to a `*` wildcard once cargo-deny audits the all-features graph.
@@ -213,8 +216,7 @@ template       = "rust-template"
 
 [workspace.metadata.config.layout]
 schema-version = "0.1.0"
-kind           = "members-dir"
-members-dir    = "crates"
+kind           = "flat"
 
 [workspace.metadata.config.update]
 schema-version   = "0.1.0"
@@ -1434,3 +1436,15 @@ question_mark_used                       = "allow"   # `?` is idiomatic
 pub_use                                  = "allow"   # re-export idiom
 ref_binding_to_reference                 = "allow"   # contradicts pattern_type_mismatch
 blanket_clippy_restriction_lints         = "allow"   # we intentionally enable restriction individually
+
+[patch."https://github.com/strict-rs/strict-thiserror"]
+thiserror = { path = "." }
+thiserror-impl = { path = "impl" }
+thiserror_no_std_test = { path = "tests/no-std" }
+xtask = { path = "xtask" }
+
+[patch."ssh://git@github.com/strict-rs/strict-thiserror.git"]
+thiserror = { path = "." }
+thiserror-impl = { path = "impl" }
+thiserror_no_std_test = { path = "tests/no-std" }
+xtask = { path = "xtask" }

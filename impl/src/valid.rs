@@ -148,16 +148,16 @@ fn check_non_field_attrs(attrs: &Attrs) -> Result<()> {
 }
 
 fn check_field_attrs(fields: &[Field]) -> Result<()> {
-  let mut from_field = None;
+  let mut from = None;
   let mut source_field = None;
   let mut backtrace_field = None;
   let mut has_backtrace = false;
   for field in fields {
-    if let Some(from) = field.attrs.from {
-      if from_field.is_some() {
-        return Err(Error::new_spanned(from.original, "duplicate #[from] attribute"));
+    if let Some(from_attr) = field.attrs.from {
+      if from.is_some() {
+        return Err(Error::new_spanned(from_attr.original, "duplicate #[from] attribute"));
       }
-      from_field = Some(field);
+      from = Some((field, from_attr));
     }
     if let Some(source) = field.attrs.source {
       if source_field.is_some() {
@@ -180,34 +180,35 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
     }
     has_backtrace |= field.is_backtrace();
   }
-  if let (Some(from_field), Some(source_field)) = (from_field, source_field) {
-    if from_field.member != source_field.member {
-      return Err(Error::new_spanned(
-        from_field.attrs.from.unwrap().original,
-        "#[from] is only supported on the source field, not any other field",
-      ));
-    }
+  if let (Some((from_field, from_attr)), Some(source_field)) = (from, source_field)
+    && from_field.member != source_field.member
+  {
+    return Err(Error::new_spanned(
+      from_attr.original,
+      "#[from] is only supported on the source field, not any other field",
+    ));
   }
-  if let Some(from_field) = from_field {
+  if let Some((from_field, from_attr)) = from {
     let max_expected_fields = match backtrace_field {
       Some(backtrace_field) => 1 + (from_field.member != backtrace_field.member) as usize,
       None => 1 + has_backtrace as usize,
     };
     if fields.len() > max_expected_fields {
       return Err(Error::new_spanned(
-        from_field.attrs.from.unwrap().original,
+        from_attr.original,
         "deriving From requires no fields other than source and backtrace",
       ));
     }
   }
-  if let Some(source_field) = source_field.or(from_field) {
-    if contains_non_static_lifetime(source_field.ty) {
-      return Err(Error::new_spanned(
-        &source_field.original.ty,
-        "non-static lifetimes are not allowed in the source of an error, because std::error::Error requires the source is dyn Error + \
-         'static",
-      ));
-    }
+  let effective_source = source_field.or(from.map(|(field, _)| field));
+  if let Some(source_field) = effective_source
+    && contains_non_static_lifetime(source_field.ty)
+  {
+    return Err(Error::new_spanned(
+      &source_field.original.ty,
+      "non-static lifetimes are not allowed in the source of an error, because std::error::Error requires the source is dyn Error + \
+       'static",
+    ));
   }
   Ok(())
 }
@@ -215,7 +216,10 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
 fn contains_non_static_lifetime(ty: &Type) -> bool {
   match ty {
     Type::Path(ty) => {
-      let bracketed = match &ty.path.segments.last().unwrap().arguments {
+      let Some(last_segment) = ty.path.segments.last() else {
+        return false;
+      };
+      let bracketed = match &last_segment.arguments {
         PathArguments::AngleBracketed(bracketed) => bracketed,
         _ => return false,
       };

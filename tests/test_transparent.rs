@@ -1,13 +1,17 @@
-#![allow(clippy::items_after_statements)]
-
-use std::error::Error as _;
+use std::error::Error as StdError;
 use std::io;
 
-use anyhow::anyhow;
+use strict_test_support::TestFailure;
+use strict_test_support::ensure;
 use thiserror::Error;
 
+mod support;
+
+use support::ensure_display;
+use support::ensure_source;
+
 #[test]
-fn test_transparent_struct() {
+fn test_transparent_struct() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error(transparent)]
   struct Error(ErrorKind);
@@ -21,17 +25,21 @@ fn test_transparent_struct() {
   }
 
   let error = Error(ErrorKind::E0);
-  assert_eq!("E0", error.to_string());
-  assert!(error.source().is_none());
+  ensure_display(&error, "E0", "transparent struct delegates display")?;
+  ensure(
+    StdError::source(&error).is_none(),
+    "source-absent transparent struct remains source-absent",
+  )?;
 
-  let io = io::Error::new(io::ErrorKind::Other, "oh no!");
+  let io = io::Error::other("oh no!");
   let error = Error(ErrorKind::from(io));
-  assert_eq!("E1", error.to_string());
-  error.source().unwrap().downcast_ref::<io::Error>().unwrap();
+  ensure_display(&error, "E1", "transparent struct delegates variant display")?;
+  let source = ensure_source::<io::Error>(&error, "transparent struct preserves its nested io::Error source")?;
+  ensure_display(source, "oh no!", "transparent struct preserves its nested source message")
 }
 
 #[test]
-fn test_transparent_enum() {
+fn test_transparent_enum() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("this failed")]
@@ -41,15 +49,17 @@ fn test_transparent_enum() {
   }
 
   let error = Error::This;
-  assert_eq!("this failed", error.to_string());
+  ensure_display(&error, "this failed", "ordinary enum variant preserves display")?;
+  ensure(StdError::source(&error).is_none(), "ordinary enum variant remains source-absent")?;
 
-  let error = Error::Other(anyhow!("inner").context("outer"));
-  assert_eq!("outer", error.to_string());
-  assert_eq!("inner", error.source().unwrap().to_string());
+  let error = Error::Other(anyhow::Error::new(io::Error::other("inner")).context("outer"));
+  ensure_display(&error, "outer", "transparent enum delegates anyhow context display")?;
+  let source = ensure_source::<io::Error>(&error, "transparent enum preserves the anyhow source chain")?;
+  ensure_display(source, "inner", "transparent enum exposes the inner source message")
 }
 
 #[test]
-fn test_transparent_enum_with_default_message() {
+fn test_transparent_enum_with_default_message() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("this failed: {0}_{1}")]
   enum Error {
@@ -59,15 +69,17 @@ fn test_transparent_enum_with_default_message() {
   }
 
   let error = Error::This(-1, -1);
-  assert_eq!("this failed: -1_-1", error.to_string());
+  ensure_display(&error, "this failed: -1_-1", "enum default display applies to ordinary variants")?;
+  ensure(StdError::source(&error).is_none(), "default-message variant remains source-absent")?;
 
-  let error = Error::Other(anyhow!("inner").context("outer"));
-  assert_eq!("outer", error.to_string());
-  assert_eq!("inner", error.source().unwrap().to_string());
+  let error = Error::Other(anyhow::Error::new(io::Error::other("inner")).context("outer"));
+  ensure_display(&error, "outer", "transparent variant overrides the enum default display")?;
+  let source = ensure_source::<io::Error>(&error, "transparent variant preserves the anyhow source chain")?;
+  ensure_display(source, "inner", "transparent variant exposes the inner source message")
 }
 
 #[test]
-fn test_transparent_enum_generic() {
+fn test_transparent_enum_generic() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   enum Error<E> {
     #[error("this failed")]
@@ -80,36 +92,45 @@ fn test_transparent_enum_generic() {
   #[error("inner error")]
   struct Inner;
 
-  let error = Error::<Inner>::This;
-  assert_eq!("this failed", error.to_string());
-
-  let error = Error::Other(Inner);
-  assert_eq!("inner error", error.to_string());
-  assert!(error.source().is_none());
-
   #[derive(Error, Debug)]
   #[error("wrapped")]
   struct WithSource(#[source] io::Error);
 
-  let io = io::Error::new(io::ErrorKind::Other, "oh no!");
+  let error = Error::<Inner>::This;
+  ensure_display(&error, "this failed", "generic enum ordinary variant preserves display")?;
+  ensure(
+    StdError::source(&error).is_none(),
+    "generic enum ordinary variant remains source-absent",
+  )?;
+
+  let error = Error::Other(Inner);
+  ensure_display(&error, "inner error", "generic transparent variant delegates display")?;
+  ensure(
+    StdError::source(&error).is_none(),
+    "generic transparent variant preserves an absent source",
+  )?;
+
+  let io = io::Error::other("oh no!");
   let error = Error::Other(WithSource(io));
-  assert_eq!("wrapped", error.to_string());
-  assert_eq!("oh no!", error.source().unwrap().to_string());
+  ensure_display(&error, "wrapped", "generic transparent variant delegates wrapped display")?;
+  let source = ensure_source::<io::Error>(&error, "generic transparent variant preserves its typed source")?;
+  ensure_display(source, "oh no!", "generic transparent variant preserves its source message")
 }
 
 #[test]
-fn test_anyhow() {
+fn test_anyhow() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error(transparent)]
   struct Any(#[from] anyhow::Error);
 
-  let error = Any::from(anyhow!("inner").context("outer"));
-  assert_eq!("outer", error.to_string());
-  assert_eq!("inner", error.source().unwrap().to_string());
+  let error = Any::from(anyhow::Error::new(io::Error::other("inner")).context("outer"));
+  ensure_display(&error, "outer", "transparent anyhow struct delegates context display")?;
+  let source = ensure_source::<io::Error>(&error, "transparent anyhow struct preserves its source chain")?;
+  ensure_display(source, "inner", "transparent anyhow struct exposes the inner source message")
 }
 
 #[test]
-fn test_non_static() {
+fn test_non_static() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error(transparent)]
   struct Error<'a> {
@@ -127,6 +148,13 @@ fn test_non_static() {
       token: "error"
     },
   };
-  assert_eq!("unexpected token: \"error\"", error.to_string());
-  assert!(error.source().is_none());
+  ensure_display(
+    &error,
+    "unexpected token: \"error\"",
+    "transparent borrowed non-source field preserves display",
+  )?;
+  ensure(
+    StdError::source(&error).is_none(),
+    "transparent borrowed non-source field remains source-absent",
+  )
 }
