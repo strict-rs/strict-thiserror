@@ -2,7 +2,7 @@
 /Cargo.lock
 **/*.rs.bk
 **/*.rmeta
-/cov/html/
+cov/
 /report/
 /metrics/
 /mutants.out/
