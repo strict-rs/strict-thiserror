@@ -61,7 +61,7 @@ rustdoc-args = [
 # ═════════════════════════════════════════════════════════════════════════════
 
 [workspace]
-members = ["impl", "tests/no-std", "xtask"]
+members = ["impl", "tests/no-std", "stask"]
 resolver = "3"
 
 # ─── Default metadata inherited by every member crate ───────────────────────
@@ -82,10 +82,10 @@ categories   = ["rust-patterns", "no-std"]
 [workspace.dependencies]
 thiserror-impl = { version = "2.1.0", path = "impl" }
 thiserror = { version = "2.1.0", path = ".", default-features = false }
-anyhow = "1.0.103"
-ref-cast = "1.0.25"
+anyhow = "1.0.104"
+ref-cast = "1.0.26"
 rustversion = "1.0.23"
-quote = "1.0.46"
+quote = "1.0.47"
 
 # CLI — our maintained fork, tracking the `sync` branch (0.10.x). The `version`
 # field constrains the git checkout so the dependency does not resolve to a `*`
@@ -93,8 +93,8 @@ quote = "1.0.46"
 bpaf = {  version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
 
 # Installed workflow contracts and the repository-owned extension runner.
-template-core = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
-template-xtask = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
+template-core = { version = "0.3.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
+template-stask = { version = "0.3.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
 
 # Panic-free test vocabulary, consumed as an external git crate, tracking the
 # crate's main branch. The version requirement (kept in sync with the crate's own
@@ -102,13 +102,13 @@ template-xtask = { version = "0.1.0", git = "https://github.com/earthlings-dev/t
 # resolved commit, refreshed by `just update`.
 strict-test-support = { version = "0.1.0", git = "https://github.com/earthlings-dev/strict-test-support-rs.git", branch = "main"}
 
-# Source analysis — powers the `cq` cyclomatic-complexity gate in xtask.
+# Source analysis — powers the `cq` cyclomatic-complexity gate in stask.
 # `span-locations` makes `proc_macro2::Span::start().line` meaningful outside a
-# proc-macro (xtask parses files in a normal binary).
-syn         = { version = "2", features = ["full", "visit"] }
+# proc-macro (stask parses files in a normal binary).
+syn         = { version = "3", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
-# Workspace introspection — xtask uses `cargo metadata` (via this crate) to find
+# Workspace introspection — stask uses `cargo metadata` (via this crate) to find
 # the workspace root for `ensure_root` and to map a path operand to its owning
 # crate for scoped commands, instead of hand-rolling manifest discovery.
 cargo_metadata = "0.23"
@@ -136,7 +136,7 @@ toml = "1.1"
 # dependency keys while preserving consumer-owned manifest formatting/comments.
 toml_edit = "0.25"
 
-# Terminal styling — xtask uses semantic styles and renders ANSI only through a
+# Terminal styling — stask uses semantic styles and renders ANSI only through a
 # shared color policy.
 anstyle = "1"
 
@@ -158,10 +158,10 @@ snapbox = { version = "1.2", features = ["diff"], default-features = false }
 # from resolving to a `*` wildcard once cargo-deny audits the all-features graph.
 trybuild = {  version = "1", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
 
-# Synchronous mutex — backs the capturable `Output` sink in xtask so tests can
+# Synchronous mutex — backs the capturable `Output` sink in stask so tests can
 # capture semantic output instead of leaking it to the terminal. `std::sync`
 # `Mutex`/`RwLock` are disallowed in clippy.toml ("prefer parking_lot in sync
-# code"); xtask is fully synchronous, so the await-holding hazard never applies.
+# code"); stask is fully synchronous, so the await-holding hazard never applies.
 parking_lot = "0.12"
 
 # ─── Release profile: small, fast, abort-on-panic ──────────────────────────
@@ -194,11 +194,8 @@ debug            = true
 
 [patch.crates-io]
 thiserror = { path = ".", version = "2.1.0" }
-
-
-
-
-
+bpaf = {  version = "0.10.0", git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
+trybuild = {  version = "1.0.117", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
 
 # ─── cargo-machete integration ─────────────────────────────────────────────
 [workspace.metadata.cargo-machete]
@@ -580,15 +577,3 @@ question_mark_used                       = "allow"   # `?` is idiomatic
 pub_use                                  = "allow"   # re-export idiom
 ref_binding_to_reference                 = "allow"   # contradicts pattern_type_mismatch
 blanket_clippy_restriction_lints         = "allow"   # we intentionally enable restriction individually
-
-[patch."https://github.com/strict-rs/strict-thiserror"]
-thiserror = { path = "." }
-thiserror-impl = { path = "impl" }
-thiserror_no_std_test = { path = "tests/no-std" }
-xtask = { path = "xtask" }
-
-[patch."https://github.com/strict-rs/strict-thiserror.git"]
-thiserror = { path = "." }
-thiserror-impl = { path = "impl" }
-thiserror_no_std_test = { path = "tests/no-std" }
-xtask = { path = "xtask" }
