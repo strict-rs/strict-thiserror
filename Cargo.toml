@@ -81,7 +81,7 @@ categories   = ["rust-patterns", "no-std"]
 # ─── Shared dependencies (populate here; members refer via `.workspace = true`) ─
 [workspace.dependencies]
 thiserror-impl = { version = "2.1.0", path = "impl" }
-thiserror = { version = "2.1.0", path = ".", default-features = false }
+thiserror = { version = "2.1.0",  default-features = false, path = "." }
 anyhow = "1.0.104"
 ref-cast = "1.0.26"
 rustversion = "1.0.23"
@@ -90,7 +90,7 @@ quote = "1.0.47"
 # CLI — our maintained fork, tracking the `sync` branch (0.10.x). The `version`
 # field constrains the git checkout so the dependency does not resolve to a `*`
 # wildcard (cargo-deny `bans.wildcards = "deny"`).
-bpaf = {  version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
+bpaf = { version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
 
 # Installed workflow contracts and the repository-owned extension runner.
 template-core = { version = "0.3.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
@@ -144,7 +144,7 @@ anstyle = "1"
 # execution uses `proptest::strict::ensure_property`. The panicking `proptest!`
 # / `prop_assert*` macro front doors are banned in clippy.toml. std-only: drops
 # the fork/timeout features (and their rusty-fork/tempfile subtree).
-proptest = {  version = "2", features = ["std", "strict-test"], default-features = false, git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
+proptest = { version = "2", features = ["std", "strict-test"], default-features = false, git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
 
 # Snapshot testing — engine behind `strict_test_support::ensure_snapshot`, used only
 # through its Result-based core (`Assert::try_eq`). diff-only: the color
@@ -156,7 +156,7 @@ snapbox = { version = "1.2", features = ["diff"], default-features = false }
 # Maintained fork, pinned as a direct git dependency (not crates.io + `[patch]`, which
 # trybuild strips from the throwaway project it builds). The `version` field keeps it
 # from resolving to a `*` wildcard once cargo-deny audits the all-features graph.
-trybuild = {  version = "1", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
+trybuild = { version = "1", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
 
 # Synchronous mutex — backs the capturable `Output` sink in stask so tests can
 # capture semantic output instead of leaking it to the terminal. `std::sync`
@@ -193,9 +193,14 @@ overflow-checks  = true
 debug            = true
 
 [patch.crates-io]
-thiserror = { path = ".", version = "2.1.0" }
+thiserror = { version = "2.1.0", path = "." }
+thiserror-impl = { version = "2.1.0", path = "impl" }
 bpaf = {  version = "0.10.0", git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
 trybuild = {  version = "1.0.117", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
+
+[patch."https://github.com/strict-rs/strict-bpaf.git"]
+thiserror = { version = "2.1.0", path = "." }
+thiserror-impl = { version = "2.1.0", path = "impl" }
 
 # ─── cargo-machete integration ─────────────────────────────────────────────
 [workspace.metadata.cargo-machete]
