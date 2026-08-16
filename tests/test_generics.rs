@@ -7,6 +7,8 @@ use core::fmt::{
 };
 use core::str::FromStr;
 
+use strict_test_support::TestFailure;
+use strict_test_support::ensure_eq;
 use thiserror::Error;
 
 pub struct NoFormat;
@@ -92,17 +94,29 @@ impl<HasDisplay, HasDebug, HasNeither> Debug for EnumCompound<HasDisplay, HasDeb
 }
 
 #[test]
-fn test_display_enum_compound() {
+fn test_display_enum_compound() -> Result<(), TestFailure> {
   let mut instance: EnumCompound<DisplayOnly, DebugOnly, NoFormat>;
 
   instance = EnumCompound::DisplayDebug(DisplayOnly, DebugOnly);
-  assert_eq!(format!("{}", instance), "display only DebugOnly");
+  ensure_eq(
+    &instance.to_string(),
+    &"display only DebugOnly".to_owned(),
+    "a {0} {1:?} variant renders display then debug",
+  )?;
 
   instance = EnumCompound::Display(DisplayOnly, NoFormat);
-  assert_eq!(format!("{}", instance), "display only");
+  ensure_eq(
+    &instance.to_string(),
+    &"display only".to_owned(),
+    "a {0} variant renders only the display field",
+  )?;
 
   instance = EnumCompound::Debug(NoFormat, DebugOnly);
-  assert_eq!(format!("{}", instance), "DebugOnly");
+  ensure_eq(
+    &instance.to_string(),
+    &"DebugOnly".to_owned(),
+    "a {1:?} variant renders only the debug field",
+  )
 }
 
 // Should expand to:
@@ -186,7 +200,7 @@ pub enum AssociatedTypeError<T: FromStr> {
 
 // Regression test for https://github.com/dtolnay/thiserror/issues/345
 #[test]
-fn test_no_bound_on_named_fmt() {
+fn test_no_bound_on_named_fmt() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("{thing}", thing = "...")]
   struct Error<T> {
@@ -196,11 +210,15 @@ fn test_no_bound_on_named_fmt() {
   let error = Error {
     thing: DebugOnly
   };
-  assert_eq!(error.to_string(), "...");
+  ensure_eq(
+    &error.to_string(),
+    &"...".to_owned(),
+    "a user-written named argument shadows the field without bounding T",
+  )
 }
 
 #[test]
-fn test_multiple_bound() {
+fn test_multiple_bound() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("0x{thing:x} 0x{thing:X}")]
   pub struct Error<T> {
@@ -210,5 +228,9 @@ fn test_multiple_bound() {
   let error = Error {
     thing: 0xFFi32
   };
-  assert_eq!(error.to_string(), "0xff 0xFF");
+  ensure_eq(
+    &error.to_string(),
+    &"0xff 0xFF".to_owned(),
+    "one field renders through both hex trait bounds",
+  )
 }

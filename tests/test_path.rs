@@ -5,6 +5,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use ref_cast::RefCast;
+use strict_test_support::TestFailure;
+use strict_test_support::ensure_eq;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -41,18 +43,22 @@ pub enum BothError {
   DebugDisplay(PathBuf),
 }
 
-fn assert<T: Display>(expected: &str, value: T) {
-  assert_eq!(expected, value.to_string());
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+  ensure_eq(
+    &actual.to_string(),
+    &expected.to_owned(),
+    "the derived Display output matches the expected rendering",
+  )
 }
 
 #[test]
-fn test_display() {
+fn test_display() -> Result<(), TestFailure> {
   let path = Path::new("/thiserror");
   let file = path.to_owned();
-  assert("failed to read '/thiserror'", StructPathBuf {
+  ensure_renders("failed to read '/thiserror'", StructPathBuf {
     file,
-  });
+  })?;
   let file = path.to_owned();
-  assert("failed to read '/thiserror'", EnumPathBuf::Read(file));
-  assert("failed to read '/thiserror'", StructPath::ref_cast(path));
+  ensure_renders("failed to read '/thiserror'", EnumPathBuf::Read(file))?;
+  ensure_renders("failed to read '/thiserror'", StructPath::ref_cast(path))
 }

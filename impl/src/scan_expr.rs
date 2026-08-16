@@ -10,6 +10,7 @@ use syn::Lifetime;
 use syn::Lit;
 use syn::Token;
 use syn::Type;
+use syn::buffer::Cursor;
 use syn::parse::ParseStream;
 use syn::parse::Result;
 
@@ -193,23 +194,7 @@ pub(crate) fn scan_expr(input: ParseStream) -> Result<()> {
           Some((ident, rest)) if ident == expected => Ok((true, rest)),
           _ => Ok((false, *cursor)),
         })?,
-        Input::Punct(expected) => input.step(|cursor| {
-          let begin = *cursor;
-          let mut cursor = begin;
-          for (i, ch) in expected.chars().enumerate() {
-            match cursor.punct() {
-              Some((punct, _)) if punct.as_char() != ch => break,
-              Some((_, rest)) if i == expected.len() - 1 => {
-                return Ok((true, rest));
-              }
-              Some((punct, rest)) if punct.spacing() == Spacing::Joint => {
-                cursor = rest;
-              }
-              _ => break,
-            }
-          }
-          Ok((false, begin))
-        })?,
+        Input::Punct(expected) => input.step(|cursor| consume_punct_sequence(*cursor, expected))?,
         Input::ConsumeAny => input.parse::<Option<TokenTree>>()?.is_some(),
         Input::ConsumeBinOp => input.parse::<BinOp>().is_ok(),
         Input::ConsumeBrace | Input::ConsumeNestedBrace => {
@@ -230,12 +215,7 @@ pub(crate) fn scan_expr(input: ParseStream) -> Result<()> {
           input.parse::<ExprPath>()?;
           true
         }
-        Input::ExpectTurbofish => {
-          if input.peek(Token![::]) {
-            input.parse::<AngleBracketedGenericArguments>()?;
-          }
-          true
-        }
+        Input::ExpectTurbofish => expect_turbofish(input)?,
         Input::ExpectType => {
           Type::without_plus(input)?;
           true
@@ -248,11 +228,51 @@ pub(crate) fn scan_expr(input: ParseStream) -> Result<()> {
           Action::SetState(next) => next,
           Action::IncDepth => (depth += 1, &INIT).1,
           Action::DecDepth => (depth -= 1, &POSTFIX).1,
-          Action::Finish => return if depth == 0 { Ok(()) } else { break },
+          Action::Finish if depth == 0 => return Ok(()),
+          Action::Finish => break,
         };
         continue 'table;
       }
     }
     return Err(input.error("unsupported expression"));
   }
+}
+
+/// Try to consume the punctuation sequence `expected` from `begin`, requiring
+/// joint spacing between all but the last character. Returns the matched flag
+/// together with the cursor to resume from.
+#[allow(
+  clippy::single_call_fn,
+  reason = "walking a joint-spaced punctuation sequence is one cursor-level concern; naming it keeps the expression state machine's \
+            dispatch arms within the workspace nesting policy"
+)]
+fn consume_punct_sequence<'a>(begin: Cursor<'a>, expected: &str) -> Result<(bool, Cursor<'a>)> {
+  let mut cursor = begin;
+  for (i, ch) in expected.chars().enumerate() {
+    match cursor.punct() {
+      Some((punct, _)) if punct.as_char() != ch => break,
+      Some((_, rest)) if i == expected.len() - 1 => {
+        return Ok((true, rest));
+      }
+      Some((punct, rest)) if punct.spacing() == Spacing::Joint => {
+        cursor = rest;
+      }
+      _ => break,
+    }
+  }
+  Ok((false, begin))
+}
+
+/// Accept a method-call position by consuming an optional turbofish argument
+/// list when the next tokens begin with `::`.
+#[allow(
+  clippy::single_call_fn,
+  reason = "the optional turbofish lookahead is a grammar decision of its own; naming it keeps the expression state machine's dispatch \
+            arms within the workspace nesting policy"
+)]
+fn expect_turbofish(input: ParseStream) -> Result<bool> {
+  if input.peek(Token![::]) {
+    input.parse::<AngleBracketedGenericArguments>()?;
+  }
+  Ok(true)
 }

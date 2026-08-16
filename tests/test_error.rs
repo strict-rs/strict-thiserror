@@ -8,11 +8,14 @@ use std::io;
 
 use thiserror::Error;
 
-macro_rules! unimplemented_display {
+// The derive requires a `Display` impl to satisfy the `Error` supertrait, but
+// these compile-shape fixtures are never formatted, so the impl just renders
+// the type's own name.
+macro_rules! type_name_display {
   ($ty:ty) => {
     impl Display for $ty {
-      fn fmt(&self, _formatter: &mut fmt::Formatter) -> fmt::Result {
-        unimplemented!()
+      fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str(stringify!($ty))
       }
     }
   };
@@ -52,9 +55,9 @@ enum EnumError {
   Unit,
 }
 
-unimplemented_display!(BracedError);
-unimplemented_display!(TupleError);
-unimplemented_display!(UnitError);
-unimplemented_display!(WithSource);
-unimplemented_display!(WithAnyhow);
-unimplemented_display!(EnumError);
+type_name_display!(BracedError);
+type_name_display!(TupleError);
+type_name_display!(UnitError);
+type_name_display!(WithSource);
+type_name_display!(WithAnyhow);
+type_name_display!(EnumError);

@@ -11,3 +11,6 @@ path = "test.rs"
 
 [dependencies]
 thiserror = { workspace = true, default-features = false }
+
+[dev-dependencies]
+strict-test-support.workspace = true

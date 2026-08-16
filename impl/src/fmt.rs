@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::iter;
 
 use proc_macro2::Delimiter;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::ToTokens as _;
@@ -70,13 +71,16 @@ impl Display<'_> {
         Some(next) => next,
         None => return Ok(()),
       };
+      if next.is_ascii_digit()
+        && !extra_positional_arguments_allowed
+        && let Some(first_unnamed) = &first_unnamed
+      {
+        let msg = format!("ambiguous reference to positional arguments by number in a {container}; change this to a named argument");
+        return Err(Error::new_spanned(first_unnamed, msg));
+      }
       let member = match next {
         '0'..='9' => {
           let int = take_int(&mut read);
-          if !extra_positional_arguments_allowed && let Some(first_unnamed) = &first_unnamed {
-            let msg = format!("ambiguous reference to positional arguments by number in a {container}; change this to a named argument");
-            return Err(Error::new_spanned(first_unnamed, msg));
-          }
           match int.parse::<u32>() {
             Ok(index) => MemberUnraw::Unnamed(Index {
               index,
@@ -85,24 +89,10 @@ impl Display<'_> {
             Err(_) => return Ok(()),
           }
         }
-        'a'..='z' | 'A'..='Z' | '_' => {
-          if read.starts_with("r#") {
-            continue;
-          }
-          let repr = take_ident(&mut read);
-          if repr == "_" {
-            // Invalid. Let rustc produce the diagnostic.
-            out += repr;
-            continue;
-          }
-          let ident = IdentUnraw::new(Ident::new(repr, span));
-          if user_named_args.contains(&ident) {
-            // Refers to a named argument written by the user, not to field.
-            out += repr;
-            continue;
-          }
-          MemberUnraw::Named(ident)
-        }
+        'a'..='z' | 'A'..='Z' | '_' => match named_member_shorthand(&mut read, &mut out, span, &user_named_args) {
+          Some(named) => named,
+          None => continue,
+        },
         _ => continue,
       };
       let end_spec = match read.find('}') {
@@ -180,6 +170,36 @@ impl Display<'_> {
     self.bindings = bindings;
     Ok(())
   }
+}
+
+/// Resolve one identifier interpolation in a `#[error("...")]` format string.
+///
+/// Returns the named field member to bind, or `None` when the text is left
+/// verbatim: raw identifiers stay unconsumed for the following scan, while `_`
+/// and arguments the caller named explicitly are consumed and replayed into
+/// `out`.
+#[allow(
+  clippy::single_call_fn,
+  reason = "the identifier arm of the shorthand scanner owns three verbatim-passthrough outcomes besides the member binding; naming that \
+            decision keeps the format-string scan loop within the workspace nesting policy"
+)]
+fn named_member_shorthand(read: &mut &str, out: &mut String, span: Span, user_named_args: &BTreeSet<IdentUnraw>) -> Option<MemberUnraw> {
+  if read.starts_with("r#") {
+    return None;
+  }
+  let repr = take_ident(read)?;
+  if repr == "_" {
+    // Invalid. Let rustc produce the diagnostic.
+    out.push_str(repr);
+    return None;
+  }
+  let ident = IdentUnraw::new(Ident::new(repr, span));
+  if user_named_args.contains(&ident) {
+    // Refers to a named argument written by the user, not to field.
+    out.push_str(repr);
+    return None;
+  }
+  Some(MemberUnraw::Named(ident))
 }
 
 struct FmtArguments {
@@ -274,10 +294,10 @@ fn is_syn_full() -> bool {
   // entire expansive syntax tree it comprises. So the following expression
   // being parsed to Expr::Block is a reliable indication that "full" is
   // enabled.
-  let test = quote!({
+  let probe = quote!({
     trait Trait {}
   });
-  match syn::parse2(test) {
+  match syn::parse2(probe) {
     Ok(Expr::Verbatim(_)) | Err(_) => false,
     Ok(Expr::Block(_)) => true,
     Ok(_) => unreachable!(),
@@ -292,12 +312,14 @@ fn take_int<'a>(read: &mut &'a str) -> &'a str {
       _ => break,
     }
   }
-  let (int, rest) = read.split_at(int_len);
+  let Some((int, rest)) = read.split_at_checked(int_len) else {
+    return "";
+  };
   *read = rest;
   int
 }
 
-fn take_ident<'a>(read: &mut &'a str) -> &'a str {
+fn take_ident<'a>(read: &mut &'a str) -> Option<&'a str> {
   let mut ident_len = 0;
   for ch in read.chars() {
     match ch {
@@ -305,9 +327,9 @@ fn take_ident<'a>(read: &mut &'a str) -> &'a str {
       _ => break,
     }
   }
-  let (ident, rest) = read.split_at(ident_len);
+  let (ident, rest) = read.split_at_checked(ident_len)?;
   *read = rest;
-  ident
+  Some(ident)
 }
 
 fn between<'a>(begin: ParseStream<'a>, end: ParseStream<'a>) -> TokenStream {

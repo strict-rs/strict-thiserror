@@ -71,20 +71,20 @@ pub enum ContainerKind {
 impl<'a> Input<'a> {
   pub fn from_syn(node: &'a DeriveInput) -> Result<Self> {
     match &node.data {
-      Data::Struct(data) => Struct::from_syn(node, data).map(Input::Struct),
-      Data::Enum(data) => Enum::from_syn(node, data).map(Input::Enum),
+      Data::Struct(struct_data) => Struct::from_syn(node, struct_data).map(Input::Struct),
+      Data::Enum(enum_data) => Enum::from_syn(node, enum_data).map(Input::Enum),
       Data::Union(_) => Err(Error::new_spanned(node, "union as errors are not supported")),
     }
   }
 }
 
 impl<'a> Struct<'a> {
-  fn from_syn(node: &'a DeriveInput, data: &'a DataStruct) -> Result<Self> {
+  fn from_syn(node: &'a DeriveInput, struct_data: &'a DataStruct) -> Result<Self> {
     let mut attrs = attr::get(&node.attrs)?;
     let scope = ParamsInScope::new(&node.generics);
-    let fields = Field::multiple_from_syn(&data.fields, &scope)?;
+    let fields = Field::multiple_from_syn(&struct_data.fields, &scope)?;
     if let Some(display) = &mut attrs.display {
-      let container = ContainerKind::from_struct(data);
+      let container = ContainerKind::from_struct(struct_data);
       display.expand_shorthand(&fields, container)?;
     }
     Ok(Struct {
@@ -97,10 +97,10 @@ impl<'a> Struct<'a> {
 }
 
 impl<'a> Enum<'a> {
-  fn from_syn(node: &'a DeriveInput, data: &'a DataEnum) -> Result<Self> {
+  fn from_syn(node: &'a DeriveInput, enum_data: &'a DataEnum) -> Result<Self> {
     let attrs = attr::get(&node.attrs)?;
     let scope = ParamsInScope::new(&node.generics);
-    let variants = data
+    let variants = enum_data
       .variants
       .iter()
       .map(|node| {

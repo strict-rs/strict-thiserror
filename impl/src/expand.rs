@@ -238,51 +238,54 @@ fn impl_enum(input: Enum) -> TokenStream {
   let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
   let mut error_inferred_bounds = InferredBounds::new();
 
-  let source_method = if input.has_source() {
-    let arms = input.variants.iter().map(|variant| {
-      let ident = &variant.ident;
-      if let Some(transparent_attr) = &variant.attrs.transparent {
-        let only_field = &variant.fields[0];
-        if only_field.contains_generic {
-          error_inferred_bounds.insert(only_field.ty, quote!(::thiserror::#private::Error));
-        }
-        let member = &only_field.member;
-        let source = quote_spanned! {transparent_attr.span=>
-            ::thiserror::#private::Error::source(transparent.as_dyn_error())
-        };
-        quote! {
-            #ty::#ident {#member: transparent} => #source,
-        }
-      } else if let Some(source_field) = variant.source_field() {
-        let source = &source_field.member;
-        if source_field.contains_generic {
-          let ty = unoptional_type(source_field.ty);
-          error_inferred_bounds.insert(ty, quote!(::thiserror::#private::Error + 'static));
-        }
-        let asref = if type_is_option(source_field.ty) {
-          Some(quote_spanned!(source.span()=> .as_ref()?))
-        } else {
-          None
-        };
-        let varsource = quote!(source);
-        let dyn_error = quote_spanned! {source_field.source_span()=>
-            #varsource #asref.as_dyn_error()
-        };
-        quote! {
-            #ty::#ident {#source: #varsource, ..} => ::core::option::Option::Some(#dyn_error),
-        }
-      } else {
-        quote! {
-            #ty::#ident {..} => ::core::option::Option::None,
-        }
+  // The per-variant arm builders for source, provide, and display below are
+  // deliberately lazy: no arm runs — recording inferred bounds or indexing
+  // fields — unless the guarded method that interpolates it is emitted.
+  let source_arms = input.variants.iter().map(|variant| {
+    let ident = &variant.ident;
+    if let Some(transparent_attr) = &variant.attrs.transparent {
+      let only_field = &variant.fields[0];
+      if only_field.contains_generic {
+        error_inferred_bounds.insert(only_field.ty, quote!(::thiserror::#private::Error));
       }
-    });
+      let member = &only_field.member;
+      let source = quote_spanned! {transparent_attr.span=>
+          ::thiserror::#private::Error::source(transparent.as_dyn_error())
+      };
+      quote! {
+          #ty::#ident {#member: transparent} => #source,
+      }
+    } else if let Some(source_field) = variant.source_field() {
+      let source = &source_field.member;
+      if source_field.contains_generic {
+        let ty = unoptional_type(source_field.ty);
+        error_inferred_bounds.insert(ty, quote!(::thiserror::#private::Error + 'static));
+      }
+      let asref = if type_is_option(source_field.ty) {
+        Some(quote_spanned!(source.span()=> .as_ref()?))
+      } else {
+        None
+      };
+      let varsource = quote!(source);
+      let dyn_error = quote_spanned! {source_field.source_span()=>
+          #varsource #asref.as_dyn_error()
+      };
+      quote! {
+          #ty::#ident {#source: #varsource, ..} => ::core::option::Option::Some(#dyn_error),
+      }
+    } else {
+      quote! {
+          #ty::#ident {..} => ::core::option::Option::None,
+      }
+    }
+  });
+  let source_method = if input.has_source() {
     Some(quote! {
         fn source(&self) -> ::core::option::Option<&(dyn ::thiserror::#private::Error + 'static)> {
             use ::thiserror::#private::AsDynError as _;
             #[allow(deprecated)]
             match self {
-                #(#arms)*
+                #(#source_arms)*
             }
         }
     })
@@ -290,99 +293,59 @@ fn impl_enum(input: Enum) -> TokenStream {
     None
   };
 
-  let provide_method = if input.has_backtrace() {
-    let request = quote!(request);
-    let arms = input.variants.iter().map(|variant| {
-      let ident = &variant.ident;
-      match (variant.backtrace_field(), variant.source_field()) {
-        (Some(backtrace_field), Some(source_field)) if backtrace_field.attrs.backtrace.is_none() => {
-          let backtrace = &backtrace_field.member;
-          let source = &source_field.member;
-          let varsource = quote!(source);
-          let source_provide = if type_is_option(source_field.ty) {
-            quote_spanned! {source.span()=>
-                if let ::core::option::Option::Some(source) = #varsource {
-                    source.thiserror_provide(#request);
-                }
+  let request = quote!(request);
+  let provide_arms = input.variants.iter().map(|variant| {
+    let ident = &variant.ident;
+    match (variant.backtrace_field(), variant.source_field()) {
+      (Some(backtrace_field), Some(source_field)) if backtrace_field.attrs.backtrace.is_none() => {
+        let backtrace = &backtrace_field.member;
+        let source = &source_field.member;
+        let varsource = quote!(source);
+        let source_provide = source_provide_body(source_field, &varsource, source.span(), &request);
+        let self_provide = backtrace_provide_body(backtrace_field, &request);
+        quote! {
+            #ty::#ident {
+                #backtrace: backtrace,
+                #source: #varsource,
+                ..
+            } => {
+                use ::thiserror::#private::ThiserrorProvide as _;
+                #source_provide
+                #self_provide
             }
-          } else {
-            quote_spanned! {source.span()=>
-                #varsource.thiserror_provide(#request);
-            }
-          };
-          let self_provide = if type_is_option(backtrace_field.ty) {
-            quote! {
-                if let ::core::option::Option::Some(backtrace) = backtrace {
-                    #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
-                }
-            }
-          } else {
-            quote! {
-                #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
-            }
-          };
-          quote! {
-              #ty::#ident {
-                  #backtrace: backtrace,
-                  #source: #varsource,
-                  ..
-              } => {
-                  use ::thiserror::#private::ThiserrorProvide as _;
-                  #source_provide
-                  #self_provide
-              }
-          }
         }
-        (Some(backtrace_field), Some(source_field)) if backtrace_field.member == source_field.member => {
-          let backtrace = &backtrace_field.member;
-          let varsource = quote!(source);
-          let source_provide = if type_is_option(source_field.ty) {
-            quote_spanned! {backtrace.span()=>
-                if let ::core::option::Option::Some(source) = #varsource {
-                    source.thiserror_provide(#request);
-                }
-            }
-          } else {
-            quote_spanned! {backtrace.span()=>
-                #varsource.thiserror_provide(#request);
-            }
-          };
-          quote! {
-              #ty::#ident {#backtrace: #varsource, ..} => {
-                  use ::thiserror::#private::ThiserrorProvide as _;
-                  #source_provide
-              }
-          }
-        }
-        (Some(backtrace_field), _) => {
-          let backtrace = &backtrace_field.member;
-          let body = if type_is_option(backtrace_field.ty) {
-            quote! {
-                if let ::core::option::Option::Some(backtrace) = backtrace {
-                    #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
-                }
-            }
-          } else {
-            quote! {
-                #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
-            }
-          };
-          quote! {
-              #ty::#ident {#backtrace: backtrace, ..} => {
-                  #body
-              }
-          }
-        }
-        (None, _) => quote! {
-            #ty::#ident {..} => {}
-        },
       }
-    });
+      (Some(backtrace_field), Some(source_field)) if backtrace_field.member == source_field.member => {
+        let backtrace = &backtrace_field.member;
+        let varsource = quote!(source);
+        let source_provide = source_provide_body(source_field, &varsource, backtrace.span(), &request);
+        quote! {
+            #ty::#ident {#backtrace: #varsource, ..} => {
+                use ::thiserror::#private::ThiserrorProvide as _;
+                #source_provide
+            }
+        }
+      }
+      (Some(backtrace_field), _) => {
+        let backtrace = &backtrace_field.member;
+        let body = backtrace_provide_body(backtrace_field, &request);
+        quote! {
+            #ty::#ident {#backtrace: backtrace, ..} => {
+                #body
+            }
+        }
+      }
+      (None, _) => quote! {
+          #ty::#ident {..} => {}
+      },
+    }
+  });
+  let provide_method = if input.has_backtrace() {
     Some(quote! {
         fn provide<'_request>(&'_request self, #request: &mut ::core::error::Request<'_request>) {
             #[allow(deprecated)]
             match self {
-                #(#arms)*
+                #(#provide_arms)*
             }
         }
     })
@@ -390,8 +353,40 @@ fn impl_enum(input: Enum) -> TokenStream {
     None
   };
 
+  let mut display_inferred_bounds = InferredBounds::new();
+  let display_arms = input.variants.iter().map(|variant| {
+    let mut display_implied_bounds = Set::new();
+    let display = if let Some(display) = &variant.attrs.display {
+      display_implied_bounds.clone_from(&display.implied_bounds);
+      display.to_token_stream()
+    } else if let Some(fmt) = &variant.attrs.fmt {
+      let fmt_path = &fmt.path;
+      let vars = variant.fields.iter().map(|field| match &field.member {
+        MemberUnraw::Named(ident) => ident.to_local(),
+        MemberUnraw::Unnamed(index) => format_ident!("_{}", index),
+      });
+      quote!(#fmt_path(#(#vars,)* __formatter))
+    } else {
+      let only_field = match &variant.fields[0].member {
+        MemberUnraw::Named(ident) => ident.to_local(),
+        MemberUnraw::Unnamed(index) => format_ident!("_{}", index),
+      };
+      display_implied_bounds.insert((0, Trait::Display));
+      quote!(::core::fmt::Display::fmt(#only_field, __formatter))
+    };
+    for (field, bound) in display_implied_bounds {
+      let field = &variant.fields[field];
+      if field.contains_generic {
+        display_inferred_bounds.insert(field.ty, bound);
+      }
+    }
+    let ident = &variant.ident;
+    let pat = fields_pat(&variant.fields);
+    quote! {
+        #ty::#ident #pat => #display
+    }
+  });
   let display_impl = if input.has_display() {
-    let mut display_inferred_bounds = InferredBounds::new();
     let has_bonus_display = input
       .variants
       .iter()
@@ -402,39 +397,7 @@ fn impl_enum(input: Enum) -> TokenStream {
     } else {
       None
     };
-    let arms = input.variants.iter().map(|variant| {
-      let mut display_implied_bounds = Set::new();
-      let display = if let Some(display) = &variant.attrs.display {
-        display_implied_bounds.clone_from(&display.implied_bounds);
-        display.to_token_stream()
-      } else if let Some(fmt) = &variant.attrs.fmt {
-        let fmt_path = &fmt.path;
-        let vars = variant.fields.iter().map(|field| match &field.member {
-          MemberUnraw::Named(ident) => ident.to_local(),
-          MemberUnraw::Unnamed(index) => format_ident!("_{}", index),
-        });
-        quote!(#fmt_path(#(#vars,)* __formatter))
-      } else {
-        let only_field = match &variant.fields[0].member {
-          MemberUnraw::Named(ident) => ident.to_local(),
-          MemberUnraw::Unnamed(index) => format_ident!("_{}", index),
-        };
-        display_implied_bounds.insert((0, Trait::Display));
-        quote!(::core::fmt::Display::fmt(#only_field, __formatter))
-      };
-      for (field, bound) in display_implied_bounds {
-        let field = &variant.fields[field];
-        if field.contains_generic {
-          display_inferred_bounds.insert(field.ty, bound);
-        }
-      }
-      let ident = &variant.ident;
-      let pat = fields_pat(&variant.fields);
-      quote! {
-          #ty::#ident #pat => #display
-      }
-    });
-    let arms = arms.collect::<Vec<_>>();
+    let arms = display_arms.collect::<Vec<_>>();
     let display_where_clause = display_inferred_bounds.augment_where_clause(input.generics);
     Some(quote! {
         #[allow(unused_qualifications)]
@@ -539,6 +502,40 @@ fn use_as_display(needs_as_display: bool) -> Option<TokenStream> {
     })
   } else {
     None
+  }
+}
+
+/// Build the `provide` statement that forwards a source field's request,
+/// unwrapping an `Option` source with `if let` so an absent source provides
+/// nothing.
+fn source_provide_body(source_field: &Field, varsource: &TokenStream, span: Span, request: &TokenStream) -> TokenStream {
+  if type_is_option(source_field.ty) {
+    quote_spanned! {span=>
+        if let ::core::option::Option::Some(source) = #varsource {
+            source.thiserror_provide(#request);
+        }
+    }
+  } else {
+    quote_spanned! {span=>
+        #varsource.thiserror_provide(#request);
+    }
+  }
+}
+
+/// Build the `provide` statement that registers a bound `backtrace` binding,
+/// unwrapping an `Option` backtrace with `if let` so an absent backtrace
+/// provides nothing.
+fn backtrace_provide_body(backtrace_field: &Field, request: &TokenStream) -> TokenStream {
+  if type_is_option(backtrace_field.ty) {
+    quote! {
+        if let ::core::option::Option::Some(backtrace) = backtrace {
+            #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
+        }
+    }
+  } else {
+    quote! {
+        #request.provide_ref::<::thiserror::#private::Backtrace>(backtrace);
+    }
   }
 }
 

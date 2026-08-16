@@ -11,14 +11,20 @@ use core::fmt::{
   self,
 };
 
+use strict_test_support::TestFailure;
+use strict_test_support::ensure_eq;
 use thiserror::Error;
 
-fn assert<T: Display>(expected: &str, value: T) {
-  assert_eq!(expected, value.to_string());
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+  ensure_eq(
+    &actual.to_string(),
+    &expected.to_owned(),
+    "the derived Display output matches the expected rendering",
+  )
 }
 
 #[test]
-fn test_braced() {
+fn test_braced() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("braced error: {msg}")]
   struct Error {
@@ -26,44 +32,44 @@ fn test_braced() {
   }
 
   let msg = "T".to_owned();
-  assert("braced error: T", Error {
+  ensure_renders("braced error: T", Error {
     msg,
-  });
+  })
 }
 
 #[test]
-fn test_braced_unused() {
+fn test_braced_unused() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("braced error")]
   struct Error {
     extra: usize,
   }
 
-  assert("braced error", Error {
+  ensure_renders("braced error", Error {
     extra: 0
-  });
+  })
 }
 
 #[test]
-fn test_tuple() {
+fn test_tuple() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("tuple error: {0}")]
   struct Error(usize);
 
-  assert("tuple error: 0", Error(0));
+  ensure_renders("tuple error: 0", Error(0))
 }
 
 #[test]
-fn test_unit() {
+fn test_unit() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("unit error")]
   struct Error;
 
-  assert("unit error", Error);
+  ensure_renders("unit error", Error)
 }
 
 #[test]
-fn test_enum() {
+fn test_enum() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("braced error: {id}")]
@@ -74,15 +80,15 @@ fn test_enum() {
     Unit,
   }
 
-  assert("braced error: 0", Error::Braced {
+  ensure_renders("braced error: 0", Error::Braced {
     id: 0
-  });
-  assert("tuple error: 0", Error::Tuple(0));
-  assert("unit error", Error::Unit);
+  })?;
+  ensure_renders("tuple error: 0", Error::Tuple(0))?;
+  ensure_renders("unit error", Error::Unit)
 }
 
 #[test]
-fn test_constants() {
+fn test_constants() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("{MSG}: {id:?} (code {CODE:?})")]
   struct Error {
@@ -92,13 +98,13 @@ fn test_constants() {
   const MSG: &str = "failed to do";
   const CODE: usize = 9;
 
-  assert("failed to do: \"\" (code 9)", Error {
+  ensure_renders("failed to do: \"\" (code 9)", Error {
     id: ""
-  });
+  })
 }
 
 #[test]
-fn test_inherit() {
+fn test_inherit() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("{0}")]
   enum Error {
@@ -107,29 +113,29 @@ fn test_inherit() {
     Other(&'static str),
   }
 
-  assert("some error", Error::Some("some error"));
-  assert("other error", Error::Other("..."));
+  ensure_renders("some error", Error::Some("some error"))?;
+  ensure_renders("other error", Error::Other("..."))
 }
 
 #[test]
-fn test_brace_escape() {
+fn test_brace_escape() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("fn main() {{}}")]
   struct Error;
 
-  assert("fn main() {}", Error);
+  ensure_renders("fn main() {}", Error)
 }
 
 #[test]
-fn test_expr() {
+fn test_expr() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("1 + 1 = {}", 1 + 1)]
   struct Error;
-  assert("1 + 1 = 2", Error);
+  ensure_renders("1 + 1 = 2", Error)
 }
 
 #[test]
-fn test_nested() {
+fn test_nested() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("!bool = {}", not(.0))]
   struct Error(bool);
@@ -139,11 +145,11 @@ fn test_nested() {
     !*bool
   }
 
-  assert("!bool = false", Error(true));
+  ensure_renders("!bool = false", Error(true))
 }
 
 #[test]
-fn test_match() {
+fn test_match() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("{intro}: {0}", intro = match .1 {
         Some(n) => format!("error occurred with {}", n),
@@ -151,12 +157,12 @@ fn test_match() {
     })]
   struct Error(String, Option<usize>);
 
-  assert("error occurred with 1: ...", Error("...".to_owned(), Some(1)));
-  assert("there was an empty error: ...", Error("...".to_owned(), None));
+  ensure_renders("error occurred with 1: ...", Error("...".to_owned(), Some(1)))?;
+  ensure_renders("there was an empty error: ...", Error("...".to_owned(), None))
 }
 
 #[test]
-fn test_nested_display() {
+fn test_nested_display() -> Result<(), TestFailure> {
   // Same behavior as the one in `test_match`, but without String allocations.
   #[derive(Error, Debug)]
   #[error("{}", {
@@ -174,8 +180,8 @@ fn test_nested_display() {
     })]
   struct Error(String, Option<usize>);
 
-  assert("error occurred with 1: ...", Error("...".to_owned(), Some(1)));
-  assert("there was an empty error: ...", Error("...".to_owned(), None));
+  ensure_renders("error occurred with 1: ...", Error("...".to_owned(), Some(1)))?;
+  ensure_renders("there was an empty error: ...", Error("...".to_owned(), None))
 }
 
 #[test]
@@ -189,7 +195,7 @@ fn test_void() {
 }
 
 #[test]
-fn test_mixed() {
+fn test_mixed() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("a={a} :: b={} :: c={c} :: d={d}", 1, c = 2, d = 3)]
   struct Error {
@@ -197,13 +203,13 @@ fn test_mixed() {
     d: usize,
   }
 
-  assert("a=0 :: b=1 :: c=2 :: d=3", Error {
+  ensure_renders("a=0 :: b=1 :: c=2 :: d=3", Error {
     a: 0, d: 0
-  });
+  })
 }
 
 #[test]
-fn test_ints() {
+fn test_ints() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("error {0}")]
@@ -212,14 +218,14 @@ fn test_ints() {
     Struct { v: usize },
   }
 
-  assert("error 9", Error::Tuple(9, 0));
-  assert("error ?", Error::Struct {
+  ensure_renders("error 9", Error::Tuple(9, 0))?;
+  ensure_renders("error ?", Error::Struct {
     v: 0
-  });
+  })
 }
 
 #[test]
-fn test_trailing_comma() {
+fn test_trailing_comma() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
     #[error(
         "error {0}",
@@ -227,11 +233,11 @@ fn test_trailing_comma() {
     #[rustfmt::skip]
     struct Error(char);
 
-  assert("error ?", Error('?'));
+  ensure_renders("error ?", Error('?'))
 }
 
 #[test]
-fn test_field() {
+fn test_field() -> Result<(), TestFailure> {
   #[derive(Debug)]
   struct Inner {
     data: usize,
@@ -241,16 +247,16 @@ fn test_field() {
   #[error("{}", .0.data)]
   struct Error(Inner);
 
-  assert(
+  ensure_renders(
     "0",
     Error(Inner {
       data: 0
     }),
-  );
+  )
 }
 
 #[test]
-fn test_nested_tuple_field() {
+fn test_nested_tuple_field() -> Result<(), TestFailure> {
   #[derive(Debug)]
   struct Inner(usize);
 
@@ -258,11 +264,11 @@ fn test_nested_tuple_field() {
   #[error("{}", .0.0)]
   struct Error(Inner);
 
-  assert("0", Error(Inner(0)));
+  ensure_renders("0", Error(Inner(0)))
 }
 
 #[test]
-fn test_pointer() {
+fn test_pointer() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("{field:p}")]
   pub struct Struct {
@@ -272,11 +278,15 @@ fn test_pointer() {
   let s = Struct {
     field: Box::new(-1)
   };
-  assert_eq!(s.to_string(), format!("{:p}", s.field));
+  ensure_eq(
+    &s.to_string(),
+    &format!("{:p}", s.field),
+    "the {field:p} shorthand renders the box's pointer address",
+  )
 }
 
 #[test]
-fn test_macro_rules_variant_from_call_site() {
+fn test_macro_rules_variant_from_call_site() -> Result<(), TestFailure> {
   // Regression test for https://github.com/dtolnay/thiserror/issues/86
 
   macro_rules! decl_error {
@@ -297,12 +307,12 @@ fn test_macro_rules_variant_from_call_site() {
 
   decl_error!(Repro(u8));
 
-  assert("0", Error0::Repro(0));
-  assert("0", Error1::Repro(0));
+  ensure_renders("0", Error0::Repro(0))?;
+  ensure_renders("0", Error1::Repro(0))
 }
 
 #[test]
-fn test_macro_rules_message_from_call_site() {
+fn test_macro_rules_message_from_call_site() -> Result<(), TestFailure> {
   // Regression test for https://github.com/dtolnay/thiserror/issues/398
 
   macro_rules! decl_error {
@@ -321,58 +331,58 @@ fn test_macro_rules_message_from_call_site() {
       Named { x: u8 },
   }
 
-  assert("0", Error::Unnamed(0));
-  assert("0", Error::Named {
+  ensure_renders("0", Error::Unnamed(0))?;
+  ensure_renders("0", Error::Named {
     x: 0
-  });
+  })
 }
 
 #[test]
-fn test_raw() {
+fn test_raw() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("braced raw error: {fn}")]
   struct Error {
     r#fn: &'static str,
   }
 
-  assert("braced raw error: T", Error {
+  ensure_renders("braced raw error: T", Error {
     r#fn: "T"
-  });
+  })
 }
 
 #[test]
-fn test_raw_enum() {
+fn test_raw_enum() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("braced raw error: {fn}")]
     Braced { r#fn: &'static str },
   }
 
-  assert("braced raw error: T", Error::Braced {
+  ensure_renders("braced raw error: T", Error::Braced {
     r#fn: "T"
-  });
+  })
 }
 
 #[test]
-fn test_keyword() {
+fn test_keyword() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("error: {type}", type = 1)]
   struct Error;
 
-  assert("error: 1", Error);
+  ensure_renders("error: 1", Error)
 }
 
 #[test]
-fn test_self() {
+fn test_self() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error("error: {self:?}")]
   struct Error;
 
-  assert("error: Error", Error);
+  ensure_renders("error: Error", Error)
 }
 
 #[test]
-fn test_str_special_chars() {
+fn test_str_special_chars() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   pub enum Error {
     #[error("brace left {{")]
@@ -393,18 +403,18 @@ fn test_str_special_chars() {
     Escape24,
   }
 
-  assert("brace left {", Error::BraceLeft);
-  assert("brace left 2 {", Error::BraceLeft2);
-  assert("brace left 3 {", Error::BraceLeft3);
-  assert("brace right }", Error::BraceRight);
-  assert("brace right 2 }", Error::BraceRight2);
-  assert("brace right 3 }", Error::BraceRight3);
-  assert("new_line", Error::NewLine);
-  assert("escape24 x", Error::Escape24);
+  ensure_renders("brace left {", Error::BraceLeft)?;
+  ensure_renders("brace left 2 {", Error::BraceLeft2)?;
+  ensure_renders("brace left 3 {", Error::BraceLeft3)?;
+  ensure_renders("brace right }", Error::BraceRight)?;
+  ensure_renders("brace right 2 }", Error::BraceRight2)?;
+  ensure_renders("brace right 3 }", Error::BraceRight3)?;
+  ensure_renders("new_line", Error::NewLine)?;
+  ensure_renders("escape24 x", Error::Escape24)
 }
 
 #[test]
-fn test_raw_str() {
+fn test_raw_str() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   pub enum Error {
     #[error(r#"raw brace left {{"#)]
@@ -417,10 +427,10 @@ fn test_raw_str() {
     BraceRight2,
   }
 
-  assert(r#"raw brace left {"#, Error::BraceLeft);
-  assert(r#"raw brace left 2 \x7B"#, Error::BraceLeft2);
-  assert(r#"raw brace right }"#, Error::BraceRight);
-  assert(r#"raw brace right 2 \x7D"#, Error::BraceRight2);
+  ensure_renders(r#"raw brace left {"#, Error::BraceLeft)?;
+  ensure_renders(r#"raw brace left 2 \x7B"#, Error::BraceLeft2)?;
+  ensure_renders(r#"raw brace right }"#, Error::BraceRight)?;
+  ensure_renders(r#"raw brace right 2 \x7D"#, Error::BraceRight2)
 }
 
 mod util {
@@ -429,13 +439,13 @@ mod util {
     self,
   };
 
-  pub fn octal<T: Octal>(value: &T, formatter: &mut fmt::Formatter) -> fmt::Result {
-    write!(formatter, "0o{:o}", value)
+  pub fn octal<T: Octal>(number: &T, formatter: &mut fmt::Formatter) -> fmt::Result {
+    write!(formatter, "0o{:o}", number)
   }
 }
 
 #[test]
-fn test_fmt_path() {
+fn test_fmt_path() -> Result<(), TestFailure> {
   fn unit(formatter: &mut fmt::Formatter) -> fmt::Result {
     formatter.write_str("unit=")
   }
@@ -462,21 +472,21 @@ fn test_fmt_path() {
     Other(bool),
   }
 
-  assert("unit=", Error::Unit);
-  assert("pair=10:0", Error::Tuple(10, 0));
-  assert("pair=10:0", Error::Entry {
+  ensure_renders("unit=", Error::Unit)?;
+  ensure_renders("pair=10:0", Error::Tuple(10, 0))?;
+  ensure_renders("pair=10:0", Error::Entry {
     k: 10, v: 0
-  });
-  assert("0o777", Error::I16(0o777));
-  assert("0o777", Error::I32 {
+  })?;
+  ensure_renders("0o777", Error::I16(0o777))?;
+  ensure_renders("0o777", Error::I32 {
     n: 0o777
-  });
-  assert("777", Error::I64(0o777));
-  assert("...false", Error::Other(false));
+  })?;
+  ensure_renders("777", Error::I64(0o777))?;
+  ensure_renders("...false", Error::Other(false))
 }
 
 #[test]
-fn test_fmt_path_inherited() {
+fn test_fmt_path_inherited() -> Result<(), TestFailure> {
   #[derive(Error, Debug)]
   #[error(fmt = crate::util::octal)]
   pub enum Error {
@@ -490,10 +500,10 @@ fn test_fmt_path_inherited() {
     Other(bool),
   }
 
-  assert("0o777", Error::I16(0o777));
-  assert("0o777", Error::I32 {
+  ensure_renders("0o777", Error::I16(0o777))?;
+  ensure_renders("0o777", Error::I32 {
     n: 0o777
-  });
-  assert("777", Error::I64(0o777));
-  assert("...false", Error::Other(false));
+  })?;
+  ensure_renders("777", Error::I64(0o777))?;
+  ensure_renders("...false", Error::Other(false))
 }

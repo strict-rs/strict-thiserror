@@ -33,29 +33,35 @@ impl<'a> ParamsInScope<'a> {
 }
 
 fn crawl(in_scope: &ParamsInScope, ty: &Type, found: &mut bool) {
-  if let Type::Path(ty) = ty {
-    if let Some(qself) = &ty.qself {
-      crawl(in_scope, &qself.ty, found);
-    } else {
-      let front = ty.path.segments.first().unwrap();
-      if front.arguments.is_none() && in_scope.names.contains(&front.ident) {
-        *found = true;
-      }
+  let Type::Path(ty) = ty else {
+    return;
+  };
+  if let Some(qself) = &ty.qself {
+    crawl(in_scope, &qself.ty, found);
+  } else {
+    let front = ty.path.segments.first().unwrap();
+    if front.arguments.is_none() && in_scope.names.contains(&front.ident) {
+      *found = true;
     }
-    for segment in &ty.path.segments {
-      if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
-        for arg in &arguments.args {
-          if let GenericArgument::Type(ty) = arg {
-            crawl(in_scope, ty, found);
-          }
-        }
+  }
+  for segment in &ty.path.segments {
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+      continue;
+    };
+    for arg in &arguments.args {
+      if let GenericArgument::Type(ty) = arg {
+        crawl(in_scope, ty, found);
       }
     }
   }
 }
 
+/// Bounds recorded against one type: the rendered forms already seen (for
+/// deduplication) alongside the token bounds in insertion order.
+type TypeBounds = (Set<String>, Punctuated<TokenStream, Token![+]>);
+
 pub struct InferredBounds {
-  bounds: Map<String, (Set<String>, Punctuated<TokenStream, Token![+]>)>,
+  bounds: Map<String, TypeBounds>,
   order:  Vec<TokenStream>,
 }
 

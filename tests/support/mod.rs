@@ -4,8 +4,8 @@ use strict_test_support::TestFailure;
 use strict_test_support::ensure_eq;
 use strict_test_support::ensure_some;
 
-pub fn ensure_display<T: Display + ?Sized>(value: &T, expected: &str, context: &'static str) -> Result<(), TestFailure> {
-  let rendered = value.to_string();
+pub fn ensure_display<T: Display + ?Sized>(actual: &T, expected: &str, context: &'static str) -> Result<(), TestFailure> {
+  let rendered = actual.to_string();
   let expected = expected.to_owned();
   ensure_eq(&rendered, &expected, context)
 }

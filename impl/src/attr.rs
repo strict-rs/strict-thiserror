@@ -217,46 +217,9 @@ fn parse_token_expr(input: ParseStream, mut begin_expr: bool) -> Result<TokenStr
       continue;
     }
 
-    if begin_expr && input.peek(Token![.]) {
-      if input.peek2(Ident) {
-        input.parse::<Token![.]>()?;
-        begin_expr = false;
-        continue;
-      } else if input.peek2(LitInt) {
-        input.parse::<Token![.]>()?;
-        let int: Index = input.parse()?;
-        tokens.push({
-          let ident = format_ident!("_{}", int.index, span = int.span);
-          TokenTree::Ident(ident)
-        });
-        begin_expr = false;
-        continue;
-      } else if input.peek2(LitFloat) {
-        let ahead = input.fork();
-        ahead.parse::<Token![.]>()?;
-        let float: LitFloat = ahead.parse()?;
-        let repr = float.to_string();
-        let mut indices = repr.split('.').map(syn::parse_str::<Index>);
-        if let (Some(Ok(first)), Some(Ok(second)), None) = (indices.next(), indices.next(), indices.next()) {
-          input.advance_to(&ahead);
-          tokens.push({
-            let ident = format_ident!("_{}", first, span = float.span());
-            TokenTree::Ident(ident)
-          });
-          tokens.push({
-            let mut punct = Punct::new('.', Spacing::Alone);
-            punct.set_span(float.span());
-            TokenTree::Punct(punct)
-          });
-          tokens.push({
-            let mut literal = Literal::u32_unsuffixed(second.index);
-            literal.set_span(float.span());
-            TokenTree::Literal(literal)
-          });
-          begin_expr = false;
-          continue;
-        }
-      }
+    if begin_expr && input.peek(Token![.]) && consume_member_access(input, &mut tokens)? {
+      begin_expr = false;
+      continue;
     }
 
     begin_expr = input.peek(Token![break])
@@ -311,6 +274,53 @@ fn parse_token_expr(input: ParseStream, mut begin_expr: bool) -> Result<TokenStr
   Ok(TokenStream::from_iter(tokens))
 }
 
+/// Consume one member access after a leading `.` in expression position:
+/// `.ident` keeps the identifier as a local binding reference, `.0` becomes
+/// the `_0` binding, and a float literal such as `.0.0` is re-tokenized into
+/// `_0 . 0`. Returns `Ok(false)` without consuming anything when the tokens
+/// after the dot are not a member access this shorthand recognizes.
+#[allow(
+  clippy::single_call_fn,
+  reason = "member access after a dot is one self-contained re-tokenization decision (identifier, integer index, or float index pair); \
+            naming it keeps the token-expression scan loop at guard-clause depth"
+)]
+fn consume_member_access(input: ParseStream, tokens: &mut Vec<TokenTree>) -> Result<bool> {
+  if input.peek2(Ident) {
+    input.parse::<Token![.]>()?;
+    return Ok(true);
+  }
+
+  if input.peek2(LitInt) {
+    input.parse::<Token![.]>()?;
+    let int: Index = input.parse()?;
+    let ident = format_ident!("_{}", int.index, span = int.span);
+    tokens.push(TokenTree::Ident(ident));
+    return Ok(true);
+  }
+
+  if input.peek2(LitFloat) {
+    let ahead = input.fork();
+    ahead.parse::<Token![.]>()?;
+    let float: LitFloat = ahead.parse()?;
+    let repr = float.to_string();
+    let mut indices = repr.split('.').map(syn::parse_str::<Index>);
+    if let (Some(Ok(first)), Some(Ok(second)), None) = (indices.next(), indices.next(), indices.next()) {
+      input.advance_to(&ahead);
+      let ident = format_ident!("_{}", first, span = float.span());
+      tokens.push(TokenTree::Ident(ident));
+      let mut punct = Punct::new('.', Spacing::Alone);
+      punct.set_span(float.span());
+      tokens.push(TokenTree::Punct(punct));
+      let mut literal = Literal::u32_unsuffixed(second.index);
+      literal.set_span(float.span());
+      tokens.push(TokenTree::Literal(literal));
+      return Ok(true);
+    }
+  }
+
+  Ok(false)
+}
+
 impl ToTokens for Display<'_> {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     if self.infinite_recursive {
@@ -340,8 +350,8 @@ impl ToTokens for Display<'_> {
     tokens.extend(if self.bindings.is_empty() {
       write
     } else {
-      let locals = self.bindings.iter().map(|(local, _value)| local);
-      let values = self.bindings.iter().map(|(_local, value)| value);
+      let locals = self.bindings.iter().map(|(local, _expression)| local);
+      let values = self.bindings.iter().map(|(_local, expression)| expression);
       quote! {
           match (#(#values,)*) {
               (#(#locals,)*) => #write

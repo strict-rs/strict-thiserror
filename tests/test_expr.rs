@@ -4,6 +4,8 @@ use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::path::PathBuf;
 
+use strict_test_support::TestFailure;
+use strict_test_support::ensure_eq;
 use thiserror::Error;
 
 // Some of the elaborate cases from the rcc codebase, which is a C compiler in
@@ -53,43 +55,46 @@ pub enum RustupError {
   },
 }
 
-#[track_caller]
-fn assert<T: Display>(expected: &str, value: T) {
-  assert_eq!(expected, value.to_string());
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+  ensure_eq(
+    &actual.to_string(),
+    &expected.to_owned(),
+    "the derived Display output matches the expected rendering",
+  )
 }
 
 #[test]
-fn test_rcc() {
-  assert("cannot shift left by 32 or more bits (got 50)", CompilerError::TooManyShiftBits {
+fn test_rcc() -> Result<(), TestFailure> {
+  ensure_renders("cannot shift left by 32 or more bits (got 50)", CompilerError::TooManyShiftBits {
     is_left: true,
     maximum: 32,
     current: 50,
-  });
+  })?;
 
-  assert("#error A B C", CompilerError::User(vec!["A", "B", "C"]));
+  ensure_renders("#error A B C", CompilerError::User(vec!["A", "B", "C"]))?;
 
-  assert("overflow while parsing signed integer literal", CompilerError::IntegerOverflow {
+  ensure_renders("overflow while parsing signed integer literal", CompilerError::IntegerOverflow {
     is_signed: Some(true),
-  });
+  })
 }
 
 #[test]
-fn test_rustup() {
-  assert(
+fn test_rustup() -> Result<(), TestFailure> {
+  ensure_renders(
     "toolchain 'nightly' does not contain component clipy; did you mean 'clippy'?",
     RustupError::UnknownComponent {
       name:       "nightly".to_owned(),
       component:  "clipy".to_owned(),
       suggestion: Some("clippy".to_owned()),
     },
-  );
+  )
 }
 
 // Regression test for https://github.com/dtolnay/thiserror/issues/335
 #[cfg(feature = "std")]
 #[test]
 #[allow(non_snake_case)]
-fn test_assoc_type_equality_constraint() {
+fn test_assoc_type_equality_constraint() -> Result<(), TestFailure> {
   pub trait Trait<T>: Display {
     type A;
   }
@@ -104,7 +109,7 @@ fn test_assoc_type_equality_constraint() {
     pub A: PathBuf,
   }
 
-  assert("... 0", Error {
+  ensure_renders("... 0", Error {
     A: PathBuf::from("...")
-  });
+  })
 }
