@@ -90,7 +90,7 @@ quote = "1.0.47"
 # CLI — our maintained fork, tracking the `sync` branch (0.10.x). The `version`
 # field constrains the git checkout so the dependency does not resolve to a `*`
 # wildcard (cargo-deny `bans.wildcards = "deny"`).
-bpaf = { version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
+bpaf = { version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "async" }
 
 # Installed workflow contracts and the repository-owned extension runner.
 template-core = { version = "0.3.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
@@ -195,7 +195,6 @@ debug            = true
 [patch.crates-io]
 thiserror = { version = "2.1.0", path = "." }
 thiserror-impl = { version = "2.1.0", path = "impl" }
-bpaf = {  version = "0.10.0", git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
 trybuild = {  version = "1.0.117", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
 
 [patch."https://github.com/strict-rs/strict-bpaf.git"]
