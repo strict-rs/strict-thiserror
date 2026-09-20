@@ -4,7 +4,7 @@ use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::path::PathBuf;
 
-use strict_test_support::TestFailure;
+use strict_test_support::ComparisonFailure;
 use strict_test_support::ensure_eq;
 use thiserror::Error;
 
@@ -55,16 +55,17 @@ pub enum RustupError {
   },
 }
 
-fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), ComparisonFailure<String, String>> {
   ensure_eq(
-    &actual.to_string(),
-    &expected.to_owned(),
+    actual.to_string(),
+    expected.to_owned(),
     "the derived Display output matches the expected rendering",
   )
+  .map(drop)
 }
 
 #[test]
-fn test_rcc() -> Result<(), TestFailure> {
+fn test_rcc() -> Result<(), ComparisonFailure<String, String>> {
   ensure_renders("cannot shift left by 32 or more bits (got 50)", CompilerError::TooManyShiftBits {
     is_left: true,
     maximum: 32,
@@ -79,7 +80,7 @@ fn test_rcc() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_rustup() -> Result<(), TestFailure> {
+fn test_rustup() -> Result<(), ComparisonFailure<String, String>> {
   ensure_renders(
     "toolchain 'nightly' does not contain component clipy; did you mean 'clippy'?",
     RustupError::UnknownComponent {
@@ -94,7 +95,7 @@ fn test_rustup() -> Result<(), TestFailure> {
 #[cfg(feature = "std")]
 #[test]
 #[allow(non_snake_case)]
-fn test_assoc_type_equality_constraint() -> Result<(), TestFailure> {
+fn test_assoc_type_equality_constraint() -> Result<(), ComparisonFailure<String, String>> {
   pub trait Trait<T>: Display {
     type A;
   }

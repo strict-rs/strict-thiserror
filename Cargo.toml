@@ -68,7 +68,7 @@ resolver = "3"
 [workspace.package]
 version      = "2.1.0"
 edition      = "2024"
-rust-version = "1.97"
+rust-version = "1.98"
 license      = "MIT OR Apache-2.0"
 license-file = "LICENSE-MIT or LICENSE-APACHE"
 publish      = false

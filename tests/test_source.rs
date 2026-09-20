@@ -1,12 +1,12 @@
 use std::error::Error as StdError;
 use std::io;
 
-use strict_test_support::TestFailure;
-use strict_test_support::ensure;
+use strict_test_support::ensure_that;
 use thiserror::Error;
 
 mod support;
 
+use support::SourceFailure;
 use support::ensure_display;
 use support::ensure_source;
 
@@ -32,37 +32,44 @@ pub struct BoxedSource {
 }
 
 #[test]
-fn test_implicit_source() -> Result<(), TestFailure> {
+fn test_implicit_source() -> Result<(), SourceFailure<ImplicitSource>> {
   let io = io::Error::other("oh no!");
   let error = ImplicitSource {
     source: io
   };
   ensure_display(&error, "implicit source", "implicit source display is preserved")?;
-  let source = ensure_source::<io::Error>(&error, "implicit source is an io::Error")?;
-  ensure_display(source, "oh no!", "implicit source message is preserved")
+  ensure_source::<io::Error, _>(
+    error,
+    "oh no!",
+    "implicit source is an io::Error",
+    "implicit source message is preserved",
+  )
 }
 
 #[test]
-fn test_explicit_source() -> Result<(), TestFailure> {
+fn test_explicit_source() -> Result<(), SourceFailure<ExplicitSource>> {
   let io = io::Error::other("oh no!");
   let error = ExplicitSource {
     source: String::new(),
     io,
   };
   ensure_display(&error, "explicit source", "explicit source display is preserved")?;
-  let source = ensure_source::<io::Error>(&error, "explicit source is an io::Error")?;
-  ensure_display(source, "oh no!", "explicit source message is preserved")
+  ensure_source::<io::Error, _>(
+    error,
+    "oh no!",
+    "explicit source is an io::Error",
+    "explicit source message is preserved",
+  )
 }
 
 #[test]
-fn test_boxed_source() -> Result<(), TestFailure> {
+fn test_boxed_source() -> Result<(), SourceFailure<BoxedSource>> {
   let source = Box::new(io::Error::other("oh no!"));
   let error = BoxedSource {
     source,
   };
   ensure_display(&error, "boxed source", "boxed source display is preserved")?;
-  let source = ensure_source::<io::Error>(&error, "boxed source is an io::Error")?;
-  ensure_display(source, "oh no!", "boxed source message is preserved")
+  ensure_source::<io::Error, _>(error, "oh no!", "boxed source is an io::Error", "boxed source message is preserved")
 }
 
 macro_rules! error_from_macro {
@@ -83,15 +90,19 @@ error_from_macro! {
 }
 
 #[test]
-fn test_macro_source() -> Result<(), TestFailure> {
+fn test_macro_source() -> Result<(), SourceFailure<MacroSource>> {
   let error = MacroSource::from(io::Error::other("macro source"));
   ensure_display(&error, "Something", "macro-generated display is usable")?;
-  let source = ensure_source::<io::Error>(&error, "macro-generated source is an io::Error")?;
-  ensure_display(source, "macro source", "macro-generated source message is preserved")
+  ensure_source::<io::Error, _>(
+    error,
+    "macro source",
+    "macro-generated source is an io::Error",
+    "macro-generated source message is preserved",
+  )
 }
 
 #[test]
-fn test_not_source() -> Result<(), TestFailure> {
+fn test_not_source() -> Result<(), impl StdError> {
   #[derive(Error, Debug)]
   #[error("{source} ==> {destination}")]
   pub struct NotSource {
@@ -104,8 +115,9 @@ fn test_not_source() -> Result<(), TestFailure> {
     destination: 'D',
   };
   ensure_display(&error, "S ==> D", "a field named source remains display data")?;
-  ensure(
-    error.source().is_none(),
-    "a non-error field named source does not become an error source",
-  )
+  ensure_that(error, "a non-error field named source does not become an error source", |error| {
+    error.source().is_none()
+  })
+  .map(drop)
+  .map_err(SourceFailure::from)
 }

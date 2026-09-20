@@ -5,7 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use ref_cast::RefCast;
-use strict_test_support::TestFailure;
+use strict_test_support::ComparisonFailure;
 use strict_test_support::ensure_eq;
 use thiserror::Error;
 
@@ -43,16 +43,17 @@ pub enum BothError {
   DebugDisplay(PathBuf),
 }
 
-fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), ComparisonFailure<String, String>> {
   ensure_eq(
-    &actual.to_string(),
-    &expected.to_owned(),
+    actual.to_string(),
+    expected.to_owned(),
     "the derived Display output matches the expected rendering",
   )
+  .map(drop)
 }
 
 #[test]
-fn test_display() -> Result<(), TestFailure> {
+fn test_display() -> Result<(), ComparisonFailure<String, String>> {
   let path = Path::new("/thiserror");
   let file = path.to_owned();
   ensure_renders("failed to read '/thiserror'", StructPathBuf {

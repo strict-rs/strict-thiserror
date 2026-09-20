@@ -11,20 +11,21 @@ use core::fmt::{
   self,
 };
 
-use strict_test_support::TestFailure;
+use strict_test_support::ComparisonFailure;
 use strict_test_support::ensure_eq;
 use thiserror::Error;
 
-fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), TestFailure> {
+fn ensure_renders<T: Display>(expected: &str, actual: T) -> Result<(), ComparisonFailure<String, String>> {
   ensure_eq(
-    &actual.to_string(),
-    &expected.to_owned(),
+    actual.to_string(),
+    expected.to_owned(),
     "the derived Display output matches the expected rendering",
   )
+  .map(drop)
 }
 
 #[test]
-fn test_braced() -> Result<(), TestFailure> {
+fn test_braced() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("braced error: {msg}")]
   struct Error {
@@ -38,7 +39,7 @@ fn test_braced() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_braced_unused() -> Result<(), TestFailure> {
+fn test_braced_unused() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("braced error")]
   struct Error {
@@ -51,7 +52,7 @@ fn test_braced_unused() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_tuple() -> Result<(), TestFailure> {
+fn test_tuple() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("tuple error: {0}")]
   struct Error(usize);
@@ -60,7 +61,7 @@ fn test_tuple() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_unit() -> Result<(), TestFailure> {
+fn test_unit() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("unit error")]
   struct Error;
@@ -69,7 +70,7 @@ fn test_unit() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_enum() -> Result<(), TestFailure> {
+fn test_enum() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("braced error: {id}")]
@@ -88,7 +89,7 @@ fn test_enum() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_constants() -> Result<(), TestFailure> {
+fn test_constants() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("{MSG}: {id:?} (code {CODE:?})")]
   struct Error {
@@ -104,7 +105,7 @@ fn test_constants() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_inherit() -> Result<(), TestFailure> {
+fn test_inherit() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("{0}")]
   enum Error {
@@ -118,7 +119,7 @@ fn test_inherit() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_brace_escape() -> Result<(), TestFailure> {
+fn test_brace_escape() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("fn main() {{}}")]
   struct Error;
@@ -127,7 +128,7 @@ fn test_brace_escape() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_expr() -> Result<(), TestFailure> {
+fn test_expr() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("1 + 1 = {}", 1 + 1)]
   struct Error;
@@ -135,7 +136,7 @@ fn test_expr() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_nested() -> Result<(), TestFailure> {
+fn test_nested() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("!bool = {}", not(.0))]
   struct Error(bool);
@@ -149,7 +150,7 @@ fn test_nested() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_match() -> Result<(), TestFailure> {
+fn test_match() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("{intro}: {0}", intro = match .1 {
         Some(n) => format!("error occurred with {}", n),
@@ -162,7 +163,7 @@ fn test_match() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_nested_display() -> Result<(), TestFailure> {
+fn test_nested_display() -> Result<(), ComparisonFailure<String, String>> {
   // Same behavior as the one in `test_match`, but without String allocations.
   #[derive(Error, Debug)]
   #[error("{}", {
@@ -195,7 +196,7 @@ fn test_void() {
 }
 
 #[test]
-fn test_mixed() -> Result<(), TestFailure> {
+fn test_mixed() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("a={a} :: b={} :: c={c} :: d={d}", 1, c = 2, d = 3)]
   struct Error {
@@ -209,7 +210,7 @@ fn test_mixed() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_ints() -> Result<(), TestFailure> {
+fn test_ints() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("error {0}")]
@@ -225,7 +226,7 @@ fn test_ints() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_trailing_comma() -> Result<(), TestFailure> {
+fn test_trailing_comma() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
     #[error(
         "error {0}",
@@ -237,7 +238,7 @@ fn test_trailing_comma() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_field() -> Result<(), TestFailure> {
+fn test_field() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Debug)]
   struct Inner {
     data: usize,
@@ -256,7 +257,7 @@ fn test_field() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_nested_tuple_field() -> Result<(), TestFailure> {
+fn test_nested_tuple_field() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Debug)]
   struct Inner(usize);
 
@@ -268,7 +269,7 @@ fn test_nested_tuple_field() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_pointer() -> Result<(), TestFailure> {
+fn test_pointer() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("{field:p}")]
   pub struct Struct {
@@ -279,14 +280,15 @@ fn test_pointer() -> Result<(), TestFailure> {
     field: Box::new(-1)
   };
   ensure_eq(
-    &s.to_string(),
-    &format!("{:p}", s.field),
+    s.to_string(),
+    format!("{:p}", s.field),
     "the {field:p} shorthand renders the box's pointer address",
   )
+  .map(drop)
 }
 
 #[test]
-fn test_macro_rules_variant_from_call_site() -> Result<(), TestFailure> {
+fn test_macro_rules_variant_from_call_site() -> Result<(), ComparisonFailure<String, String>> {
   // Regression test for https://github.com/dtolnay/thiserror/issues/86
 
   macro_rules! decl_error {
@@ -312,7 +314,7 @@ fn test_macro_rules_variant_from_call_site() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_macro_rules_message_from_call_site() -> Result<(), TestFailure> {
+fn test_macro_rules_message_from_call_site() -> Result<(), ComparisonFailure<String, String>> {
   // Regression test for https://github.com/dtolnay/thiserror/issues/398
 
   macro_rules! decl_error {
@@ -338,7 +340,7 @@ fn test_macro_rules_message_from_call_site() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_raw() -> Result<(), TestFailure> {
+fn test_raw() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("braced raw error: {fn}")]
   struct Error {
@@ -351,7 +353,7 @@ fn test_raw() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_raw_enum() -> Result<(), TestFailure> {
+fn test_raw_enum() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   enum Error {
     #[error("braced raw error: {fn}")]
@@ -364,7 +366,7 @@ fn test_raw_enum() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_keyword() -> Result<(), TestFailure> {
+fn test_keyword() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("error: {type}", type = 1)]
   struct Error;
@@ -373,7 +375,7 @@ fn test_keyword() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_self() -> Result<(), TestFailure> {
+fn test_self() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error("error: {self:?}")]
   struct Error;
@@ -382,7 +384,7 @@ fn test_self() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_str_special_chars() -> Result<(), TestFailure> {
+fn test_str_special_chars() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   pub enum Error {
     #[error("brace left {{")]
@@ -414,7 +416,7 @@ fn test_str_special_chars() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_raw_str() -> Result<(), TestFailure> {
+fn test_raw_str() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   pub enum Error {
     #[error(r#"raw brace left {{"#)]
@@ -445,7 +447,7 @@ mod util {
 }
 
 #[test]
-fn test_fmt_path() -> Result<(), TestFailure> {
+fn test_fmt_path() -> Result<(), ComparisonFailure<String, String>> {
   fn unit(formatter: &mut fmt::Formatter) -> fmt::Result {
     formatter.write_str("unit=")
   }
@@ -486,7 +488,7 @@ fn test_fmt_path() -> Result<(), TestFailure> {
 }
 
 #[test]
-fn test_fmt_path_inherited() -> Result<(), TestFailure> {
+fn test_fmt_path_inherited() -> Result<(), ComparisonFailure<String, String>> {
   #[derive(Error, Debug)]
   #[error(fmt = crate::util::octal)]
   pub enum Error {
