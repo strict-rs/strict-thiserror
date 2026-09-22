@@ -14,7 +14,13 @@ kind = "flat"
 [update.opt-outs]
 files = []
 defaults = []
-keys = []
+# This fork exercises `anyhow` interoperability in its test suite. Keep these
+# arrays target-owned so template updates preserve that test-only exception.
+keys = [
+  "clippy.toml:disallowed-macros",
+  "clippy.toml:disallowed-methods",
+  "clippy.toml:disallowed-types",
+]
 elements = []
 
 [deviations.justfile]
