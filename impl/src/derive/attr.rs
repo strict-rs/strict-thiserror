@@ -11,7 +11,6 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::quote;
-use quote::quote_spanned;
 use syn::Attribute;
 use syn::Error;
 use syn::ExprPath;
@@ -28,68 +27,109 @@ use syn::bracketed;
 use syn::parenthesized;
 use syn::parse::End;
 use syn::parse::ParseStream;
-use syn::parse::discouraged::Speculative;
+use syn::parse::discouraged::Speculative as _;
+use syn::spanned::Spanned as _;
 use syn::token;
 
-pub struct Attrs<'a> {
-  pub display:     Option<Display<'a>>,
-  pub source:      Option<Source<'a>>,
-  pub backtrace:   Option<&'a Attribute>,
-  pub from:        Option<From<'a>>,
-  pub transparent: Option<Transparent<'a>>,
-  pub fmt:         Option<Fmt<'a>>,
+/// Derive attributes belonging to one declaration, variant, or field.
+pub(super) struct Attrs<'a> {
+  /// Literal display message and formatting arguments.
+  pub(super) display:     Option<Display<'a>>,
+  /// Explicit standard error source.
+  pub(super) source:      Option<Source<'a>>,
+  /// Explicit backtrace provider or capture field.
+  pub(super) backtrace:   Option<&'a Attribute>,
+  /// Conversion source for an automatically derived `From` implementation.
+  pub(super) from:        Option<From<'a>>,
+  /// Delegate display and source selection to the sole field.
+  pub(super) transparent: Option<Transparent<'a>>,
+  /// Custom enum-variant formatter.
+  pub(super) fmt:         Option<Fmt<'a>>,
 }
 
+/// Format message after resolving field shorthand and explicit arguments.
 #[derive(Clone)]
-pub struct Display<'a> {
-  pub original:               &'a Attribute,
-  pub fmt:                    LitStr,
-  pub args:                   TokenStream,
-  pub requires_fmt_machinery: bool,
-  pub has_bonus_display:      bool,
-  pub infinite_recursive:     bool,
-  pub implied_bounds:         Set<(usize, Trait)>,
-  pub bindings:               Vec<(Ident, TokenStream)>,
+pub(super) struct Display<'a> {
+  /// Original attribute retained for validation diagnostics.
+  pub(super) original:               &'a Attribute,
+  /// Resolved message passed to the selected formatting operation.
+  pub(super) fmt:                    LitStr,
+  /// Explicit arguments with field shorthand rewritten to local bindings.
+  pub(super) args:                   TokenStream,
+  /// Whether formatting arguments or escaped braces require the formatting machinery.
+  pub(super) requires_fmt_machinery: bool,
+  /// Whether shorthand formatting requires the runtime's display-view contract.
+  pub(super) uses_display_view:      bool,
+  /// Field indices and their required formatting traits.
+  pub(super) implied_bounds:         Set<(usize, Trait)>,
+  /// Generated argument names and the expressions they borrow.
+  pub(super) bindings:               Vec<(Ident, TokenStream)>,
 }
 
+/// Explicit source attribute and its diagnostic span.
 #[derive(Copy, Clone)]
-pub struct Source<'a> {
-  pub original: &'a Attribute,
-  pub span:     Span,
+pub(super) struct Source<'a> {
+  /// Complete original attribute.
+  pub(super) original: &'a Attribute,
+  /// Span covering the attribute syntax when the parser can join it.
+  pub(super) span:     Span,
 }
 
+/// Conversion attribute and its diagnostic span.
 #[derive(Copy, Clone)]
-pub struct From<'a> {
-  pub original: &'a Attribute,
-  pub span:     Span,
+pub(super) struct From<'a> {
+  /// Complete original attribute.
+  pub(super) original: &'a Attribute,
+  /// Span covering the conversion attribute.
+  pub(super) span:     Span,
 }
 
+/// Transparent delegation attribute and its diagnostic span.
 #[derive(Copy, Clone)]
-pub struct Transparent<'a> {
-  pub original: &'a Attribute,
-  pub span:     Span,
+pub(super) struct Transparent<'a> {
+  /// Complete original attribute.
+  pub(super) original: &'a Attribute,
+  /// Span covering the transparent keyword.
+  pub(super) span:     Span,
 }
 
+/// Path to the user-selected enum formatter.
 #[derive(Clone)]
-pub struct Fmt<'a> {
-  pub original: &'a Attribute,
-  pub path:     ExprPath,
+pub(super) struct Fmt<'a> {
+  /// Complete original attribute.
+  pub(super) original: &'a Attribute,
+  /// Formatter expression path retained with its original hygiene.
+  pub(super) path:     ExprPath,
 }
 
+/// Standard formatting trait required by one field interpolation.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub enum Trait {
+pub(super) enum Trait {
+  /// Debug representation.
   Debug,
+  /// User-facing display representation.
   Display,
+  /// Octal integer representation.
   Octal,
+  /// Lowercase hexadecimal representation.
   LowerHex,
+  /// Uppercase hexadecimal representation.
   UpperHex,
+  /// Pointer identity.
   Pointer,
+  /// Binary integer representation.
   Binary,
+  /// Lowercase exponential representation.
   LowerExp,
+  /// Uppercase exponential representation.
   UpperExp,
 }
 
-pub fn get(input: &[Attribute]) -> Result<Attrs> {
+/// Parse the derive's attributes without interpreting attributes owned by other derives.
+///
+/// # Errors
+/// Rejects malformed or repeated attributes owned by this derive.
+pub(super) fn get(input: &[Attribute]) -> Result<Attrs<'_>> {
   let mut attrs = Attrs {
     display:     None,
     source:      None,
@@ -103,19 +143,19 @@ pub fn get(input: &[Attribute]) -> Result<Attrs> {
     if attr.path().is_ident("error") {
       parse_error_attribute(&mut attrs, attr)?;
     } else if attr.path().is_ident("source") {
-      attr.meta.require_path_only()?;
+      attr.meta.require_path_only().map(drop)?;
       if attrs.source.is_some() {
         return Err(Error::new_spanned(attr, "duplicate #[source] attribute"));
       }
       let span = (attr.pound_token.span)
         .join(attr.bracket_token.span.join())
-        .unwrap_or(attr.path().get_ident().unwrap().span());
+        .unwrap_or_else(|| attr.path().span());
       attrs.source = Some(Source {
         original: attr,
         span,
       });
     } else if attr.path().is_ident("backtrace") {
-      attr.meta.require_path_only()?;
+      attr.meta.require_path_only().map(drop)?;
       if attrs.backtrace.is_some() {
         return Err(Error::new_spanned(attr, "duplicate #[backtrace] attribute"));
       }
@@ -133,24 +173,35 @@ pub fn get(input: &[Attribute]) -> Result<Attrs> {
       }
       let span = (attr.pound_token.span)
         .join(attr.bracket_token.span.join())
-        .unwrap_or(attr.path().get_ident().unwrap().span());
+        .unwrap_or_else(|| attr.path().span());
       attrs.from = Some(From {
         original: attr,
         span,
       });
+    } else {
+      // Other derive owners retain their original attributes.
     }
   }
 
   Ok(attrs)
 }
 
+/// Parse one message, transparent delegation, or custom formatter attribute.
+///
+/// # Errors
+/// Rejects duplicate forms or syntax that does not match a supported error attribute.
+#[allow(
+  clippy::single_call_fn,
+  reason = "message, transparent, and custom-format attributes share one parsing and duplicate-validation boundary"
+)]
 fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Result<()> {
+  /// Keywords reserved by the error attribute grammar.
   mod kw {
     syn::custom_keyword!(transparent);
     syn::custom_keyword!(fmt);
   }
 
-  attr.parse_args_with(|input: ParseStream| {
+  attr.parse_args_with(|input: ParseStream<'_>| {
     let lookahead = input.lookahead1();
     let fmt = if lookahead.peek(LitStr) {
       input.parse::<LitStr>()?
@@ -165,8 +216,8 @@ fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Resu
       });
       return Ok(());
     } else if lookahead.peek(kw::fmt) {
-      input.parse::<kw::fmt>()?;
-      input.parse::<Token![=]>()?;
+      input.parse::<kw::fmt>().map(drop)?;
+      input.parse::<Token![=]>().map(drop)?;
       let path: ExprPath = input.parse()?;
       if attrs.fmt.is_some() {
         return Err(Error::new_spanned(attr, "duplicate #[error(fmt = ...)] attribute"));
@@ -181,7 +232,7 @@ fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Resu
     };
 
     let args = if input.is_empty() || input.peek(Token![,]) && input.peek2(End) {
-      input.parse::<Option<Token![,]>>()?;
+      input.parse::<Option<Token![,]>>().map(drop)?;
       TokenStream::new()
     } else {
       parse_token_expr(input, false)?
@@ -194,8 +245,7 @@ fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Resu
       fmt,
       args,
       requires_fmt_machinery,
-      has_bonus_display: false,
-      infinite_recursive: false,
+      uses_display_view: false,
       implied_bounds: Set::new(),
       bindings: Vec::new(),
     };
@@ -207,7 +257,11 @@ fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Resu
   })
 }
 
-fn parse_token_expr(input: ParseStream, mut begin_expr: bool) -> Result<TokenStream> {
+/// Rewrite leading field shorthand while retaining the rest of each expression's tokens.
+///
+/// # Errors
+/// Returns the native parsing failure for an invalid token or delimited expression.
+fn parse_token_expr(input: ParseStream<'_>, mut begin_expr: bool) -> Result<TokenStream> {
   let mut tokens = Vec::new();
   while !input.is_empty() {
     if input.peek(token::Group) {
@@ -284,29 +338,29 @@ fn parse_token_expr(input: ParseStream, mut begin_expr: bool) -> Result<TokenStr
   reason = "member access after a dot is one self-contained re-tokenization decision (identifier, integer index, or float index pair); \
             naming it keeps the token-expression scan loop at guard-clause depth"
 )]
-fn consume_member_access(input: ParseStream, tokens: &mut Vec<TokenTree>) -> Result<bool> {
+fn consume_member_access(input: ParseStream<'_>, tokens: &mut Vec<TokenTree>) -> Result<bool> {
   if input.peek2(Ident) {
-    input.parse::<Token![.]>()?;
+    input.parse::<Token![.]>().map(drop)?;
     return Ok(true);
   }
 
   if input.peek2(LitInt) {
-    input.parse::<Token![.]>()?;
+    input.parse::<Token![.]>().map(drop)?;
     let int: Index = input.parse()?;
-    let ident = format_ident!("_{}", int.index, span = int.span);
+    let ident = format_ident!("field_{}", int.index, span = int.span);
     tokens.push(TokenTree::Ident(ident));
     return Ok(true);
   }
 
   if input.peek2(LitFloat) {
     let ahead = input.fork();
-    ahead.parse::<Token![.]>()?;
+    ahead.parse::<Token![.]>().map(drop)?;
     let float: LitFloat = ahead.parse()?;
     let repr = float.to_string();
     let mut indices = repr.split('.').map(syn::parse_str::<Index>);
     if let (Some(Ok(first)), Some(Ok(second)), None) = (indices.next(), indices.next(), indices.next()) {
       input.advance_to(&ahead);
-      let ident = format_ident!("_{}", first, span = float.span());
+      let ident = format_ident!("field_{}", first, span = float.span());
       tokens.push(TokenTree::Ident(ident));
       let mut punct = Punct::new('.', Spacing::Alone);
       punct.set_span(float.span());
@@ -321,58 +375,18 @@ fn consume_member_access(input: ParseStream, tokens: &mut Vec<TokenTree>) -> Res
   Ok(false)
 }
 
-impl ToTokens for Display<'_> {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
-    if self.infinite_recursive {
-      let span = self.fmt.span();
-      tokens.extend(quote_spanned! {span=>
-          #[warn(unconditional_recursion)]
-          fn _fmt() { _fmt() }
-      });
-    }
-
-    let fmt = &self.fmt;
-    let args = &self.args;
-
-    // Currently `write!(f, "text")` produces less efficient code than
-    // `f.write_str("text")`. We recognize the case when the format string
-    // has no braces and no interpolated values, and generate simpler code.
-    let write = if self.requires_fmt_machinery {
-      quote! {
-          ::core::write!(__formatter, #fmt #args)
-      }
-    } else {
-      quote! {
-          __formatter.write_str(#fmt)
-      }
-    };
-
-    tokens.extend(if self.bindings.is_empty() {
-      write
-    } else {
-      let locals = self.bindings.iter().map(|(local, _expression)| local);
-      let values = self.bindings.iter().map(|(_local, expression)| expression);
-      quote! {
-          match (#(#values,)*) {
-              (#(#locals,)*) => #write
-          }
-      }
-    });
-  }
-}
-
 impl ToTokens for Trait {
   fn to_tokens(&self, tokens: &mut TokenStream) {
-    let trait_name = match self {
-      Trait::Debug => "Debug",
-      Trait::Display => "Display",
-      Trait::Octal => "Octal",
-      Trait::LowerHex => "LowerHex",
-      Trait::UpperHex => "UpperHex",
-      Trait::Pointer => "Pointer",
-      Trait::Binary => "Binary",
-      Trait::LowerExp => "LowerExp",
-      Trait::UpperExp => "UpperExp",
+    let trait_name = match *self {
+      Self::Debug => "Debug",
+      Self::Display => "Display",
+      Self::Octal => "Octal",
+      Self::LowerHex => "LowerHex",
+      Self::UpperHex => "UpperHex",
+      Self::Pointer => "Pointer",
+      Self::Binary => "Binary",
+      Self::LowerExp => "LowerExp",
+      Self::UpperExp => "UpperExp",
     };
     let ident = Ident::new(trait_name, Span::call_site());
     tokens.extend(quote!(::core::fmt::#ident));

@@ -1,171 +1,152 @@
-use std::io;
+//! Derived conversions retain concrete source errors and optional wrapping.
 
-use strict_test_support::ComparisonFailure;
-use strict_test_support::PredicateFailure;
-use strict_test_support::ensure_that;
-use thiserror::Error;
+/// Exercise every supported conversion shape through its native error owner.
+#[cfg(test)]
+mod tests {
+  use std::error::Error as StdError;
+  use std::io::Error as IoError;
+  use std::io::ErrorKind;
 
-mod support;
+  use strict_test_support::PredicateFailure;
+  use strict_test_support::ensure_that;
+  use thiserror::Error;
 
-use support::SourceFailure;
-use support::ensure_display;
-use support::ensure_source;
-
-#[derive(Error, Debug)]
-#[error("...")]
-pub struct ErrorStruct {
-  #[from]
-  source: io::Error,
-}
-
-#[derive(Error, Debug)]
-#[error("...")]
-pub struct ErrorStructOptional {
-  #[from]
-  source: Option<io::Error>,
-}
-
-#[derive(Error, Debug)]
-#[error("...")]
-pub struct ErrorTuple(#[from] io::Error);
-
-#[derive(Error, Debug)]
-#[error("...")]
-pub struct ErrorTupleOptional(#[from] Option<io::Error>);
-
-#[derive(Error, Debug)]
-#[error("...")]
-pub enum ErrorEnum {
-  Test {
+  /// Conversion into a named source field.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  struct ErrorStruct {
+    /// Native conversion source.
     #[from]
-    source: io::Error,
-  },
-}
+    source: IoError,
+  }
 
-#[derive(Error, Debug)]
-#[error("...")]
-pub enum ErrorEnumOptional {
-  Test {
+  /// Conversion wraps a named optional source in Some.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  struct ErrorStructOptional {
+    /// Native optional conversion source.
     #[from]
-    source: Option<io::Error>,
-  },
-}
+    source: Option<IoError>,
+  }
 
-#[derive(Error, Debug)]
-#[error("...")]
-pub enum Many {
-  Any(#[from] anyhow::Error),
-  Io(#[from] io::Error),
-}
+  /// Conversion into a numbered source field.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  struct ErrorTuple(#[from] IoError);
 
-/// Complete assertion failures for the supported `From` implementations.
-#[derive(Debug, Error)]
-enum FromTestFailure {
-  /// A converted error's display did not match.
-  #[error(transparent)]
-  Display(#[from] ComparisonFailure<String, String>),
-  /// A conversion selected the wrong enum variant.
-  #[error(transparent)]
-  Variant(#[from] PredicateFailure<Many>),
-  /// A named source was not preserved.
-  #[error(transparent)]
-  Struct(#[from] SourceFailure<ErrorStruct>),
-  /// An optional named source was not preserved.
-  #[error(transparent)]
-  StructOptional(#[from] SourceFailure<ErrorStructOptional>),
-  /// A tuple source was not preserved.
-  #[error(transparent)]
-  Tuple(#[from] SourceFailure<ErrorTuple>),
-  /// An optional tuple source was not preserved.
-  #[error(transparent)]
-  TupleOptional(#[from] SourceFailure<ErrorTupleOptional>),
-  /// An enum source was not preserved.
-  #[error(transparent)]
-  Enum(#[from] SourceFailure<ErrorEnum>),
-  /// An optional enum source was not preserved.
-  #[error(transparent)]
-  EnumOptional(#[from] SourceFailure<ErrorEnumOptional>),
-  /// A source in an enum with multiple conversions was not preserved.
-  #[error(transparent)]
-  Many(#[from] SourceFailure<Many>),
-}
+  /// Conversion wraps a numbered optional source in Some.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  struct ErrorTupleOptional(#[from] Option<IoError>);
 
-#[test]
-fn test_from() -> Result<(), FromTestFailure> {
-  let error = ErrorStruct::from(io::Error::other("struct source"));
-  ensure_display(&error, "...", "struct From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "struct source",
-    "struct From conversion exposes an io::Error",
-    "struct From conversion preserves the source message",
-  )?;
+  /// Conversion selects a named enum variant.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  enum ErrorEnum {
+    /// Native source is retained by the selected variant.
+    Test {
+      /// Concrete conversion source.
+      #[from]
+      source: IoError,
+    },
+  }
 
-  let error = ErrorStructOptional::from(io::Error::other("optional struct source"));
-  ensure_display(&error, "...", "optional struct From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "optional struct source",
-    "optional struct From conversion exposes an io::Error",
-    "optional struct From conversion preserves the source message",
-  )?;
+  /// Conversion selects a named enum variant with an optional source.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  enum ErrorEnumOptional {
+    /// Native source is wrapped by the selected variant.
+    Test {
+      /// Concrete optional conversion source.
+      #[from]
+      source: Option<IoError>,
+    },
+  }
 
-  let error = ErrorTuple::from(io::Error::other("tuple source"));
-  ensure_display(&error, "...", "tuple From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "tuple source",
-    "tuple From conversion exposes an io::Error",
-    "tuple From conversion preserves the source message",
-  )?;
+  /// Distinct native conversion types select distinct variants.
+  #[derive(Debug, Error)]
+  #[error("...")]
+  enum Many {
+    /// Test-only anyhow interoperability preserves its underlying concrete error.
+    Any(#[from] anyhow::Error),
+    /// Standard I/O conversion retains its native source directly.
+    Io(#[from] IoError),
+  }
 
-  let error = ErrorTupleOptional::from(io::Error::other("optional tuple source"));
-  ensure_display(&error, "...", "optional tuple From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "optional tuple source",
-    "optional tuple From conversion exposes an io::Error",
-    "optional tuple From conversion preserves the source message",
-  )?;
+  /// Inspect source identity and kind while retaining the complete converted owner.
+  ///
+  /// # Errors
+  /// Returns the original owner when its display, concrete source, or native kind differs.
+  fn ensure_io_source<Subject: StdError>(subject: Subject, expected: ErrorKind) -> Result<Subject, PredicateFailure<Subject>> {
+    ensure_that(subject, "conversion preserves the complete native I/O source", |observed| {
+      observed.to_string() == "..."
+        && observed
+          .source()
+          .and_then(|cause| cause.downcast_ref::<IoError>())
+          .is_some_and(|cause| cause.kind() == expected)
+    })
+  }
 
-  let error = ErrorEnum::from(io::Error::other("enum source"));
-  ensure_display(&error, "...", "enum From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "enum source",
-    "enum From conversion exposes an io::Error",
-    "enum From conversion preserves the source message",
-  )?;
+  /// Each conversion shape executes its own assertion and retains its own concrete failure.
+  macro_rules! conversion_cases {
+    ($($name:ident => $target:ty),+ $(,)?) => {
+      $(
+        /// Derived From preserves this shape's native source and display.
+        #[test]
+        fn $name() -> Result<(), PredicateFailure<$target>> {
+          ensure_io_source(<$target>::from(IoError::from(ErrorKind::NotFound)), ErrorKind::NotFound).map(drop)
+        }
+      )+
+    };
+  }
 
-  let error = ErrorEnumOptional::from(io::Error::other("optional enum source"));
-  ensure_display(&error, "...", "optional enum From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "optional enum source",
-    "optional enum From conversion exposes an io::Error",
-    "optional enum From conversion preserves the source message",
-  )?;
+  conversion_cases! {
+    test_from => ErrorStruct,
+    optional_named_conversion_preserves_source => ErrorStructOptional,
+    tuple_conversion_preserves_source => ErrorTuple,
+    optional_tuple_conversion_preserves_source => ErrorTupleOptional,
+    enum_conversion_preserves_source => ErrorEnum,
+    optional_enum_conversion_preserves_source => ErrorEnumOptional,
+  }
 
-  let error = Many::from(io::Error::other("many io source"));
-  let error = ensure_that(error, "io::Error conversion selects Many::Io", |error| matches!(error, Many::Io(_)))?;
-  ensure_display(&error, "...", "Many::Io From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "many io source",
-    "Many::Io exposes an io::Error",
-    "Many::Io preserves the source message",
-  )?;
+  /// The I/O conversion cannot select the anyhow variant.
+  #[test]
+  fn io_conversion_selects_its_native_variant() -> Result<(), PredicateFailure<Many>> {
+    let converted = Many::from(IoError::from(ErrorKind::PermissionDenied));
+    ensure_that(converted, "native I/O conversion selects its own variant", |observed| {
+      matches!(*observed, Many::Io(ref cause) if cause.kind() == ErrorKind::PermissionDenied) && observed.to_string() == "..."
+    })
+    .map(drop)
+  }
 
-  let error = Many::from(anyhow::Error::new(io::Error::other("many anyhow source")));
-  let error = ensure_that(error, "anyhow::Error conversion selects Many::Any", |error| {
-    matches!(error, Many::Any(_))
-  })?;
-  ensure_display(&error, "...", "Many::Any From conversion preserves display")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "many anyhow source",
-    "Many::Any exposes its typed underlying source",
-    "Many::Any preserves the underlying source message",
-  )
-  .map_err(FromTestFailure::from)
+  /// Anyhow conversion preserves its original typed source and selects the distinct variant.
+  #[test]
+  fn anyhow_conversion_preserves_typed_source() -> Result<(), PredicateFailure<Many>> {
+    let converted = Many::from(anyhow::Error::new(IoError::from(ErrorKind::Interrupted)));
+    ensure_that(converted, "anyhow conversion retains the typed native I/O error", |observed| {
+      matches!(*observed, Many::Any(ref cause) if cause.downcast_ref::<IoError>().is_some_and(|native| native.kind() == ErrorKind::Interrupted))
+        && observed.to_string() == "..."
+    }).map(drop)
+  }
+
+  /// Original named, numbered, and enum owners with absent optional sources.
+  type OptionalOwners = (ErrorStructOptional, ErrorTupleOptional, ErrorEnumOptional);
+
+  /// Optional sources remain absent when no conversion source was supplied.
+  #[test]
+  fn optional_sources_preserve_absence() -> Result<(), PredicateFailure<OptionalOwners>> {
+    let owners = (
+      ErrorStructOptional {
+        source: None
+      },
+      ErrorTupleOptional(None),
+      ErrorEnumOptional::Test {
+        source: None
+      },
+    );
+    ensure_that(owners, "optional wrappers do not invent missing sources", |observed| {
+      observed.0.source().is_none() && observed.1.source().is_none() && observed.2.source().is_none()
+    })
+    .map(drop)
+  }
 }

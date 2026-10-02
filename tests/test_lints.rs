@@ -1,109 +1,95 @@
-#![allow(clippy::mixed_attributes_style)]
+//! Derives remain compatible with strict caller lint policy and borrowed conversions.
 
-pub use std::error::Error;
+/// Caller lint contracts apply to the complete concrete test owners.
+#[cfg(test)]
+mod tests {
+  use std::error::Error;
+  use std::io::Error as IoError;
+  use std::io::ErrorKind;
 
-use thiserror::Error;
+  use strict_test_support::PredicateFailure;
+  use strict_test_support::ensure_that;
+  use thiserror::Error;
 
-#[test]
-fn test_allow_attributes() {
-  #![deny(clippy::allow_attributes)]
+  /// A unit derive does not require qualifications to be suppressed.
+  #[derive(Debug, Error)]
+  #[error("caller lint contract")]
+  struct CallerError;
 
-  #[derive(Error, Debug)]
-  #[error("...")]
-  pub struct MyError(#[from] anyhow::Error);
-
-  let _: MyError;
-}
-
-#[test]
-fn test_unused_qualifications() {
-  #![deny(unused_qualifications)]
-
-  // Expansion of derive(Error) macro can't know whether something like
-  // std::error::Error is already imported in the caller's scope so it must
-  // suppress unused_qualifications.
-
-  #[derive(Error, Debug)]
-  #[error("...")]
-  pub struct MyError;
-
-  let _: MyError;
-}
-
-#[test]
-fn test_needless_lifetimes() {
-  #![allow(dead_code)]
-  #![deny(clippy::elidable_lifetime_names, clippy::needless_lifetimes)]
-
-  #[derive(Error, Debug)]
-  #[error("...")]
-  pub enum MyError<'a> {
-    A(#[from] std::io::Error),
-    B(&'a ()),
+  /// Generic lifetime parameters stay attached to the original borrowed data.
+  #[derive(Debug, Error)]
+  enum BorrowedError<'a> {
+    /// Native conversion source.
+    #[error("I/O")]
+    Io(#[from] IoError),
+    /// Original non-source borrow.
+    #[error("{0}")]
+    Borrowed(&'a str),
   }
 
-  let _: MyError;
-}
-
-#[test]
-fn test_forbid_needless_lifetimes() {
-  #![forbid(clippy::needless_lifetimes)]
-
-  #[derive(Error, Debug)]
-  #[error("...")]
-  pub struct MyError(#[from] std::io::Error);
-
-  let _: MyError;
-}
-
-#[test]
-fn test_deprecated() {
-  #![deny(deprecated)]
-
-  #[derive(Error, Debug)]
-  #[deprecated]
-  #[error("...")]
-  pub struct DeprecatedStruct;
-
-  #[derive(Error, Debug)]
-  #[error("{message} {}", .message)]
-  pub struct DeprecatedStructField {
-    #[deprecated]
-    message: String,
+  /// Strict callers can use a generated error without any allow attributes.
+  #[test]
+  fn test_allow_attributes() -> Result<(), PredicateFailure<CallerError>> {
+    ensure_that(
+      CallerError,
+      "the generated error remains usable under strict caller policy",
+      |subject| subject.to_string() == "caller lint contract" && subject.source().is_none(),
+    )
+    .map(drop)
   }
 
-  #[derive(Error, Debug)]
-  #[deprecated]
-  pub enum DeprecatedEnum {
-    #[error("...")]
-    Variant,
+  /// Importing the standard Error trait does not make generated qualifications a caller error.
+  #[test]
+  fn test_unused_qualifications() -> Result<(), PredicateFailure<CallerError>> {
+    ensure_that(
+      CallerError,
+      "caller trait imports retain generated source and display behavior",
+      |subject| Error::source(subject).is_none() && subject.to_string() == "caller lint contract",
+    )
+    .map(drop)
   }
 
-  #[derive(Error, Debug)]
-  pub enum DeprecatedVariant {
-    #[deprecated]
-    #[error("...")]
-    Variant,
+  /// Borrowed variants keep their original data while conversion variants keep native sources.
+  #[test]
+  fn test_needless_lifetimes() -> Result<(), PredicateFailure<String>> {
+    let text = String::from("borrowed");
+    ensure_that(text, "generated implementations retain the native borrow lifetime", |subject| {
+      let borrowed = BorrowedError::Borrowed(subject.as_str());
+      let converted = BorrowedError::from(IoError::from(ErrorKind::NotFound));
+      borrowed.to_string() == subject.as_str()
+        && borrowed.source().is_none()
+        && converted
+          .source()
+          .and_then(|cause| cause.downcast_ref::<IoError>())
+          .is_some_and(|cause| cause.kind() == ErrorKind::NotFound)
+    })
+    .map(drop)
   }
 
-  #[derive(Error, Debug)]
-  pub enum DeprecatedFrom {
-    #[error(transparent)]
-    Variant(
-      #[from]
-      #[allow(deprecated)]
-      DeprecatedStruct,
-    ),
+  /// An ordinary conversion does not introduce explicit unnecessary lifetime parameters.
+  #[test]
+  fn test_forbid_needless_lifetimes() -> Result<(), PredicateFailure<BorrowedError<'static>>> {
+    let owner = BorrowedError::from(IoError::from(ErrorKind::Interrupted));
+    ensure_that(
+      owner,
+      "conversion retains its native source under the inherited lifetime policy",
+      |subject| {
+        subject.to_string() == "I/O"
+          && subject
+            .source()
+            .and_then(|cause| cause.downcast_ref::<IoError>())
+            .is_some_and(|cause| cause.kind() == ErrorKind::Interrupted)
+      },
+    )
+    .map(drop)
   }
 
-  #[allow(deprecated)]
-  let _: DeprecatedStruct;
-  #[allow(deprecated)]
-  let _: DeprecatedStructField;
-  #[allow(deprecated)]
-  let _ = DeprecatedEnum::Variant;
-  #[allow(deprecated)]
-  let _ = DeprecatedVariant::Variant;
-  #[allow(deprecated)]
-  let _ = DeprecatedFrom::Variant(DeprecatedStruct);
+  /// Full rustc integration owns compatibility with deprecated declaration syntax.
+  #[test]
+  fn test_deprecated() -> Result<(), trybuild::TryBuildError> {
+    let mut cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/pass/deprecated-declarations.rs");
+    cases.compile_fail("tests/ui/source-struct-not-error.rs");
+    cases.run()
+  }
 }

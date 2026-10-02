@@ -54,7 +54,6 @@
 //!   which may be arbitrary expressions. For example:
 //!
 //!   ```rust
-//!   # use core::i32;
 //!   # use thiserror::Error;
 //!   #
 //!   #[derive(Error, Debug)]
@@ -119,8 +118,11 @@
 //!   }
 //!   #
 //!   # impl Display for MyError {
-//!   #     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//!   #         unimplemented!()
+//!   #     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+//!   #         match self {
+//!   #             Self::Io(source) => Display::fmt(source, formatter),
+//!   #             Self::Glob(source) => Display::fmt(source, formatter),
+//!   #         }
 //!   #     }
 //!   # }
 //!   ```
@@ -147,8 +149,8 @@
 //!   }
 //!   #
 //!   # impl Display for MyError {
-//!   #     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//!   #         unimplemented!()
+//!   #     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+//!   #         formatter.write_str(&self.msg)
 //!   #     }
 //!   # }
 //!   ```
@@ -253,14 +255,7 @@
 //! [`Display`]: std::fmt::Display
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/thiserror/2.0.18")]
-#![allow(
-  clippy::elidable_lifetime_names,
-  clippy::module_name_repetitions,
-  clippy::needless_lifetimes,
-  clippy::return_self_not_must_use,
-  clippy::wildcard_imports
-)]
+#![doc(html_root_url = "https://docs.rs/thiserror/2.1.0")]
 #![cfg_attr(error_generic_member_access, feature(error_generic_member_access))]
 
 #[cfg(all(thiserror_nightly_testing, not(error_generic_member_access)))]
@@ -271,14 +266,19 @@ extern crate std;
 #[cfg(feature = "std")]
 extern crate std as core;
 
+/// Convert concrete source errors through the derive's hidden runtime contract.
 mod aserror;
+/// Preserve display inference and path formatting across feature combinations.
 mod display;
 #[cfg(error_generic_member_access)]
+/// Forward nightly generic member-access requests to source errors.
 mod provide;
+/// Format pointer fields without adding a borrow to their pointer identity.
 mod var;
 
-pub use thiserror_impl::*;
+pub use thiserror_impl::Error;
 
+/// Assemble the versioned runtime contract consumed by generated implementations.
 mod private;
 
 include!(concat!(env!("OUT_DIR"), "/private.rs"));

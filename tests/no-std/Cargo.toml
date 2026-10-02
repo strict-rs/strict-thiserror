@@ -2,9 +2,9 @@
 name = "thiserror_no_std_test"
 version = "0.0.0"
 authors.workspace = true
-edition.workspace = true
+edition = { workspace = true }
 publish = false
-rust-version.workspace = true
+rust-version = { workspace = true }
 
 [lib]
 path = "test.rs"
@@ -14,3 +14,6 @@ thiserror = { workspace = true, default-features = false }
 
 [dev-dependencies]
 strict-test-support.workspace = true
+
+[lints]
+workspace = true

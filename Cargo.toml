@@ -1,15 +1,16 @@
 [package]
 name = "thiserror"
+autotests = false
 version.workspace = true
 authors.workspace = true
 categories.workspace = true
 description = "derive(Error)"
 documentation = "https://docs.rs/thiserror"
-edition.workspace = true
+edition = { workspace = true }
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true
-rust-version.workspace = true
+rust-version = { workspace = true }
 
 [features]
 default = ["std"]
@@ -30,6 +31,9 @@ std = ["anyhow/std"]
 [dependencies]
 thiserror-impl = { workspace = true }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 anyhow.workspace = true
 ref-cast.workspace = true
@@ -48,6 +52,40 @@ required-features = ["std"]
 [[test]]
 name = "test_path"
 required-features = ["std"]
+
+[[test]]
+name = "compiletest"
+
+[[test]]
+name = "build_workflow"
+path = "build_test.rs"
+
+[[test]]
+name = "test_display"
+
+[[test]]
+name = "test_error"
+
+[[test]]
+name = "test_expr"
+
+[[test]]
+name = "test_from"
+
+[[test]]
+name = "test_generics"
+
+[[test]]
+name = "test_lints"
+
+[[test]]
+name = "test_recursive"
+
+[[test]]
+name = "test_source"
+
+[[test]]
+name = "test_transparent"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -79,7 +117,7 @@ resolver = "3"
 # ─── Default metadata inherited by every member crate ───────────────────────
 [workspace.package]
 version      = "2.1.0"
-edition      = "2024"
+edition = "2024"
 rust-version = "1.98"
 license      = "MIT OR Apache-2.0"
 license-file = "LICENSE-MIT or LICENSE-APACHE"
@@ -96,7 +134,7 @@ thiserror-impl = { version = "2.1.0", path = "impl" }
 thiserror = { version = "2.1.0",  default-features = false, path = "." }
 # Test-only interoperability dependency; no production package inherits it.
 anyhow = { version = "1.0.104", default-features = false }
-ref-cast = "1.0.26"
+ref-cast = "1.0.27"
 rustversion = "1.0.23"
 quote = "1.0.47"
 
@@ -108,8 +146,8 @@ template-stask = { version = "0.3.0", git = "https://github.com/earthlings-dev/t
 strict-test-support = { version = "0.1.0", default-features = false, git = "https://github.com/earthlings-dev/strict-test-support-rs.git", branch = "main" }
 
 # The derive implementation selects the syntax capabilities it consumes.
-syn = { version = "3", default-features = false }
-proc-macro2 = "1"
+syn = { version = "3", default-features = false, features = ["extra-traits", "full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 
 # Compile-diagnostic tests exercise the strict runner's typed result API.
 trybuild = { version = "1", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
@@ -150,6 +188,11 @@ trybuild = {  version = "1.0.117", git = "https://github.com/strict-rs/strict-tr
 [patch."https://github.com/strict-rs/strict-bpaf.git"]
 thiserror = { version = "2.1.0", path = "." }
 thiserror-impl = { version = "2.1.0", path = "impl" }
+
+[patch."https://github.com/strict-rs/strict-thiserror.git"]
+thiserror = { path = "." }
+thiserror-impl = { path = "impl" }
+thiserror_no_std_test = { path = "tests/no-std" }
 
 # ─── cargo-machete integration ─────────────────────────────────────────────
 [workspace.metadata.cargo-machete]

@@ -1,123 +1,149 @@
-use std::error::Error as StdError;
-use std::io;
+//! Native source selection preserves the concrete error and its original kind.
 
-use strict_test_support::ensure_that;
-use thiserror::Error;
+/// Source selection is observable through the standard error contract.
+#[cfg(test)]
+mod tests {
+  use std::error::Error as StdError;
+  use std::io::Error as IoError;
+  use std::io::ErrorKind;
 
-mod support;
+  use strict_test_support::PredicateFailure;
+  use strict_test_support::ensure_that;
+  use thiserror::Error;
 
-use support::SourceFailure;
-use support::ensure_display;
-use support::ensure_source;
-
-#[derive(Error, Debug)]
-#[error("implicit source")]
-pub struct ImplicitSource {
-  source: io::Error,
-}
-
-#[derive(Error, Debug)]
-#[error("explicit source")]
-pub struct ExplicitSource {
-  source: String,
-  #[source]
-  io:     io::Error,
-}
-
-#[derive(Error, Debug)]
-#[error("boxed source")]
-pub struct BoxedSource {
-  #[source]
-  source: Box<dyn StdError + Send + 'static>,
-}
-
-#[test]
-fn test_implicit_source() -> Result<(), SourceFailure<ImplicitSource>> {
-  let io = io::Error::other("oh no!");
-  let error = ImplicitSource {
-    source: io
-  };
-  ensure_display(&error, "implicit source", "implicit source display is preserved")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "oh no!",
-    "implicit source is an io::Error",
-    "implicit source message is preserved",
-  )
-}
-
-#[test]
-fn test_explicit_source() -> Result<(), SourceFailure<ExplicitSource>> {
-  let io = io::Error::other("oh no!");
-  let error = ExplicitSource {
-    source: String::new(),
-    io,
-  };
-  ensure_display(&error, "explicit source", "explicit source display is preserved")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "oh no!",
-    "explicit source is an io::Error",
-    "explicit source message is preserved",
-  )
-}
-
-#[test]
-fn test_boxed_source() -> Result<(), SourceFailure<BoxedSource>> {
-  let source = Box::new(io::Error::other("oh no!"));
-  let error = BoxedSource {
-    source,
-  };
-  ensure_display(&error, "boxed source", "boxed source display is preserved")?;
-  ensure_source::<io::Error, _>(error, "oh no!", "boxed source is an io::Error", "boxed source message is preserved")
-}
-
-macro_rules! error_from_macro {
-    ($($variants:tt)*) => {
-        #[derive(Error)]
-        #[derive(Debug)]
-        pub enum MacroSource {
-            $($variants)*
-        }
-    }
-}
-
-// Test that we generate impls with the proper hygiene
-#[rustfmt::skip]
-error_from_macro! {
-    #[error("Something")]
-    Variant(#[from] io::Error)
-}
-
-#[test]
-fn test_macro_source() -> Result<(), SourceFailure<MacroSource>> {
-  let error = MacroSource::from(io::Error::other("macro source"));
-  ensure_display(&error, "Something", "macro-generated display is usable")?;
-  ensure_source::<io::Error, _>(
-    error,
-    "macro source",
-    "macro-generated source is an io::Error",
-    "macro-generated source message is preserved",
-  )
-}
-
-#[test]
-fn test_not_source() -> Result<(), impl StdError> {
-  #[derive(Error, Debug)]
-  #[error("{source} ==> {destination}")]
-  pub struct NotSource {
-    r#source:    char,
-    destination: char,
+  /// A conventional field name selects the concrete source.
+  #[derive(Debug, Error)]
+  #[error("implicit source")]
+  struct ImplicitSource {
+    /// Original native I/O error.
+    source: IoError,
   }
 
-  let error = NotSource {
-    source:      'S',
-    destination: 'D',
-  };
-  ensure_display(&error, "S ==> D", "a field named source remains display data")?;
-  ensure_that(error, "a non-error field named source does not become an error source", |error| {
-    error.source().is_none()
-  })
-  .map(drop)
-  .map_err(SourceFailure::from)
+  /// An explicit attribute takes precedence over a non-error field named source.
+  #[derive(Debug, Error)]
+  #[error("explicit source")]
+  struct ExplicitSource {
+    /// Display-only data sharing the conventional source name.
+    source: String,
+    /// Original native I/O error explicitly selected as the source.
+    #[source]
+    io:     IoError,
+  }
+
+  /// Dynamic error interoperability retains the boxed native I/O source.
+  #[derive(Debug, Error)]
+  #[error("boxed source")]
+  struct BoxedSource {
+    /// Standard error object accepted by the source contract.
+    #[source]
+    source: Box<dyn StdError + Send + 'static>,
+  }
+
+  /// Macro-provided fields retain their call-site source identity.
+  macro_rules! error_from_macro {
+    ($variant:ident) => {
+      /// Error declared through an outer macro.
+      #[derive(Debug, Error)]
+      enum MacroSource {
+        /// Concrete I/O conversion declared by the caller.
+        #[error("Something")]
+        $variant(#[from] IoError),
+      }
+    };
+  }
+
+  error_from_macro!(Variant);
+
+  /// Conventionally named source fields expose the original native kind.
+  #[test]
+  fn test_implicit_source() -> Result<(), PredicateFailure<ImplicitSource>> {
+    let error = ImplicitSource {
+      source: IoError::from(ErrorKind::NotFound),
+    };
+    ensure_that(error, "implicit source retains native I/O identity and kind", |subject| {
+      subject.to_string() == "implicit source"
+        && subject
+          .source()
+          .and_then(|cause| cause.downcast_ref::<IoError>())
+          .is_some_and(|cause| cause.kind() == ErrorKind::NotFound)
+    })
+    .map(drop)
+  }
+
+  /// Explicit source selection leaves unrelated same-name data intact.
+  #[test]
+  fn test_explicit_source() -> Result<(), PredicateFailure<ExplicitSource>> {
+    let error = ExplicitSource {
+      source: "display data".to_owned(),
+      io:     IoError::from(ErrorKind::PermissionDenied),
+    };
+    ensure_that(
+      error,
+      "explicit source preserves both native I/O and the unrelated source field",
+      |subject| {
+        subject.source == "display data"
+          && subject.to_string() == "explicit source"
+          && subject
+            .source()
+            .and_then(|cause| cause.downcast_ref::<IoError>())
+            .is_some_and(|cause| cause.kind() == ErrorKind::PermissionDenied)
+      },
+    )
+    .map(drop)
+  }
+
+  /// Boxed standard error objects remain usable as concrete sources.
+  #[test]
+  fn test_boxed_source() -> Result<(), PredicateFailure<BoxedSource>> {
+    let error = BoxedSource {
+      source: Box::new(IoError::from(ErrorKind::Interrupted)),
+    };
+    ensure_that(error, "boxed source retains the native I/O error", |subject| {
+      subject.to_string() == "boxed source"
+        && subject
+          .source()
+          .and_then(|cause| cause.downcast_ref::<IoError>())
+          .is_some_and(|cause| cause.kind() == ErrorKind::Interrupted)
+    })
+    .map(drop)
+  }
+
+  /// The surrounding macro does not change source or conversion hygiene.
+  #[test]
+  fn test_macro_source() -> Result<(), PredicateFailure<MacroSource>> {
+    let error = MacroSource::from(IoError::from(ErrorKind::NotFound));
+    ensure_that(error, "macro-generated conversion retains its native source", |subject| {
+      subject.to_string() == "Something"
+        && subject
+          .source()
+          .and_then(|cause| cause.downcast_ref::<IoError>())
+          .is_some_and(|cause| cause.kind() == ErrorKind::NotFound)
+    })
+    .map(drop)
+  }
+
+  /// Non-error data with the conventional name does not become a source.
+  #[test]
+  fn test_not_source() -> Result<(), PredicateFailure<NotSource>> {
+    let error = NotSource {
+      source:      'S',
+      destination: 'D',
+    };
+    ensure_that(
+      error,
+      "non-error source data remains formatting data without an error source",
+      |subject| subject.to_string() == "S ==> D" && subject.source().is_none(),
+    )
+    .map(drop)
+  }
+
+  /// Raw spelling distinguishes display data from conventional source selection.
+  #[derive(Debug, Error)]
+  #[error("{source} ==> {destination}")]
+  struct NotSource {
+    /// Original source character.
+    r#source:    char,
+    /// Original destination character.
+    destination: char,
+  }
 }

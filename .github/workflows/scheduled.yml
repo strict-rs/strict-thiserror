@@ -1,0 +1,57 @@
+name: Scheduled
+
+# Weekly deep checks that catch drift without a code change. Security
+# advisories rot on their own, and the coverage gates are repeated here so
+# `workflow_dispatch` can refresh reports and badges on demand with the same
+# strict criteria as `ci`.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deep-checks:
+    name: audit + coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the template workflow
+        run: cargo install --git https://github.com/earthlings-dev/template-rs.git --branch main --bin template template-cli
+
+      # The installed command remains the single source of truth for
+      # toolchains, components, targets, and every Cargo tool.
+      - name: Bootstrap toolchains, components, targets, and tools
+        run: template init
+
+      - name: template audit
+        run: template audit
+
+      # Enforces the TOTAL and per-file coverage floors (see
+      # the installed Cargo coverage workflow), writes summary.txt /
+      # lcov.info / html/ / mode.txt under cov/, and refreshes the full badge
+      # set.
+      - name: template coverage --per-file
+        run: template coverage --per-file
+
+      - name: template coverage-per-feature
+        run: template coverage-per-feature
+
+      # Upload the reports even when the floor gate fails — the gate runs
+      # after the writes, so the numbers behind a breach are inspectable.
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-reports
+          path: cov/
+          retention-days: 14

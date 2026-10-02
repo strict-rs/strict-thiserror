@@ -4,23 +4,37 @@ use syn::PathArguments;
 use syn::Result;
 use syn::Type;
 
-use crate::ast::Enum;
-use crate::ast::Field;
-use crate::ast::Input;
-use crate::ast::Struct;
-use crate::ast::Variant;
-use crate::attr::Attrs;
+use super::ast::Enum;
+use super::ast::Field;
+use super::ast::Input;
+use super::ast::Struct;
+use super::ast::Variant;
+use super::attr::Attrs;
 
-impl Input<'_> {
-  pub(crate) fn validate(&self) -> Result<()> {
-    match self {
-      Input::Struct(input) => input.validate(),
-      Input::Enum(input) => input.validate(),
+/// Validate a complete syntax owner before emitting standard error implementations.
+pub(super) trait Validate {
+  /// Reject invalid attributes, field relationships, or concrete source lifetimes.
+  ///
+  /// # Errors
+  /// Returns the original declaration, attribute, or field diagnostic.
+  fn validate(&self) -> Result<()>;
+}
+
+impl Validate for Input<'_> {
+  /// Validate attribute placement, transparent fields, and concrete source lifetimes.
+  ///
+  /// # Errors
+  /// Returns the original attribute or field diagnostic when the declaration violates its contract.
+  fn validate(&self) -> Result<()> {
+    match *self {
+      Input::Struct(ref input) => input.validate(),
+      Input::Enum(ref input) => input.validate(),
     }
   }
 }
 
-impl Struct<'_> {
+impl Validate for Struct<'_> {
+  /// Validate this syntax owner before generating any standard trait implementation.
   fn validate(&self) -> Result<()> {
     check_non_field_attrs(&self.attrs)?;
     if let Some(transparent) = self.attrs.transparent {
@@ -37,7 +51,7 @@ impl Struct<'_> {
         ));
       }
     }
-    if let Some(fmt) = &self.attrs.fmt {
+    if let Some(fmt) = self.attrs.fmt.as_ref() {
       return Err(Error::new_spanned(
         fmt.original,
         "#[error(fmt = ...)] is only supported in enums; for a struct, handwrite your own Display impl",
@@ -51,7 +65,8 @@ impl Struct<'_> {
   }
 }
 
-impl Enum<'_> {
+impl Validate for Enum<'_> {
+  /// Validate this syntax owner before generating any standard trait implementation.
   fn validate(&self) -> Result<()> {
     check_non_field_attrs(&self.attrs)?;
     let has_display = self.has_display();
@@ -65,7 +80,8 @@ impl Enum<'_> {
   }
 }
 
-impl Variant<'_> {
+impl Validate for Variant<'_> {
+  /// Validate this syntax owner before generating any standard trait implementation.
   fn validate(&self) -> Result<()> {
     check_non_field_attrs(&self.attrs)?;
     if self.attrs.transparent.is_some() {
@@ -87,15 +103,16 @@ impl Variant<'_> {
   }
 }
 
-impl Field<'_> {
+impl Validate for Field<'_> {
+  /// Validate this syntax owner before generating any standard trait implementation.
   fn validate(&self) -> Result<()> {
-    if let Some(unexpected_display_attr) = if let Some(display) = &self.attrs.display {
-      Some(display.original)
-    } else if let Some(fmt) = &self.attrs.fmt {
-      Some(fmt.original)
-    } else {
-      None
-    } {
+    if let Some(unexpected_display_attr) = self
+      .attrs
+      .display
+      .as_ref()
+      .map(|display| display.original)
+      .or_else(|| self.attrs.fmt.as_ref().map(|formatter| formatter.original))
+    {
       return Err(Error::new_spanned(
         unexpected_display_attr,
         "not expected here; the #[error(...)] attribute belongs on top of a struct or an enum variant",
@@ -105,39 +122,43 @@ impl Field<'_> {
   }
 }
 
-fn check_non_field_attrs(attrs: &Attrs) -> Result<()> {
-  if let Some(from) = &attrs.from {
+/// Reject field-only attributes on declarations and mutually exclusive display forms.
+fn check_non_field_attrs(attrs: &Attrs<'_>) -> Result<()> {
+  if let Some(from) = attrs.from.as_ref() {
     return Err(Error::new_spanned(
       from.original,
       "not expected here; the #[from] attribute belongs on a specific field",
     ));
   }
-  if let Some(source) = &attrs.source {
+  if let Some(source) = attrs.source.as_ref() {
     return Err(Error::new_spanned(
       source.original,
       "not expected here; the #[source] attribute belongs on a specific field",
     ));
   }
-  if let Some(backtrace) = &attrs.backtrace {
+  if let Some(backtrace) = attrs.backtrace.as_ref() {
     return Err(Error::new_spanned(
       backtrace,
       "not expected here; the #[backtrace] attribute belongs on a specific field",
     ));
   }
   if attrs.transparent.is_some() {
-    if let Some(display) = &attrs.display {
+    if let Some(display) = attrs.display.as_ref() {
       return Err(Error::new_spanned(
         display.original,
         "cannot have both #[error(transparent)] and a display attribute",
       ));
     }
-    if let Some(fmt) = &attrs.fmt {
+    if let Some(fmt) = attrs.fmt.as_ref() {
       return Err(Error::new_spanned(
         fmt.original,
         "cannot have both #[error(transparent)] and #[error(fmt = ...)]",
       ));
     }
-  } else if let (Some(display), Some(_)) = (&attrs.display, &attrs.fmt) {
+  }
+  if attrs.transparent.is_none()
+    && let (Some(display), Some(_)) = (attrs.display.as_ref(), attrs.fmt.as_ref())
+  {
     return Err(Error::new_spanned(
       display.original,
       "cannot have both #[error(fmt = ...)] and a format arguments attribute",
@@ -147,7 +168,8 @@ fn check_non_field_attrs(attrs: &Attrs) -> Result<()> {
   Ok(())
 }
 
-fn check_field_attrs(fields: &[Field]) -> Result<()> {
+/// Validate source uniqueness, conversion ownership, and backtrace field cardinality.
+fn check_field_attrs(fields: &[Field<'_>]) -> Result<()> {
   let mut from = None;
   let mut source_field = None;
   let mut backtrace_field = None;
@@ -180,8 +202,8 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
     }
     has_backtrace |= field.is_backtrace();
   }
-  if let (Some((from_field, from_attr)), Some(source_field)) = (from, source_field)
-    && from_field.member != source_field.member
+  if let (Some((from_field, from_attr)), Some(explicit_source)) = (from, source_field)
+    && from_field.member != explicit_source.member
   {
     return Err(Error::new_spanned(
       from_attr.original,
@@ -190,8 +212,9 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
   }
   if let Some((from_field, from_attr)) = from {
     let max_expected_fields = match backtrace_field {
-      Some(backtrace_field) => 1 + (from_field.member != backtrace_field.member) as usize,
-      None => 1 + has_backtrace as usize,
+      Some(captured_backtrace) if from_field.member != captured_backtrace.member => 2,
+      None if has_backtrace => 2,
+      Some(_) | None => 1,
     };
     if fields.len() > max_expected_fields {
       return Err(Error::new_spanned(
@@ -200,12 +223,12 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
       ));
     }
   }
-  let effective_source = source_field.or(from.map(|(field, _)| field));
-  if let Some(source_field) = effective_source
-    && contains_non_static_lifetime(source_field.ty)
+  let effective_source = source_field.or_else(|| from.map(|(field, _attribute)| field));
+  if let Some(selected_source) = effective_source
+    && contains_non_static_lifetime(selected_source.ty)
   {
     return Err(Error::new_spanned(
-      &source_field.original.ty,
+      &selected_source.original.ty,
       "non-static lifetimes are not allowed in the source of an error, because std::error::Error requires the source is dyn Error + \
        'static",
     ));
@@ -213,26 +236,31 @@ fn check_field_attrs(fields: &[Field]) -> Result<()> {
   Ok(())
 }
 
+/// Recognize non-static source borrows in supported reference and generic path types.
+#[allow(
+  clippy::single_call_fn,
+  reason = "source lifetime validation is independent of attribute placement and conversion field cardinality"
+)]
 fn contains_non_static_lifetime(ty: &Type) -> bool {
-  match ty {
-    Type::Path(ty) => {
-      let Some(last_segment) = ty.path.segments.last() else {
-        return false;
-      };
-      let bracketed = match &last_segment.arguments {
-        PathArguments::AngleBracketed(bracketed) => bracketed,
-        _ => return false,
-      };
-      for arg in &bracketed.args {
-        match arg {
-          GenericArgument::Type(ty) if contains_non_static_lifetime(ty) => return true,
-          GenericArgument::Lifetime(lifetime) if lifetime.ident != "static" => return true,
-          _ => {}
-        }
-      }
-      false
-    }
-    Type::Reference(ty) => ty.lifetime.as_ref().is_some_and(|lifetime| lifetime.ident != "static"),
-    _ => false, // maybe implement later if there are common other cases
+  if let Type::Reference(ref reference) = *ty {
+    return reference.lifetime.as_ref().is_some_and(|lifetime| lifetime.ident != "static");
   }
+  let Type::Path(ref syntax) = *ty else {
+    return false;
+  };
+  let Some(segment) = syntax.path.segments.last() else {
+    return false;
+  };
+  let PathArguments::AngleBracketed(ref arguments) = segment.arguments else {
+    return false;
+  };
+  arguments.args.iter().any(|argument| {
+    if let GenericArgument::Type(ref nested) = *argument {
+      return contains_non_static_lifetime(nested);
+    }
+    if let GenericArgument::Lifetime(ref lifetime) = *argument {
+      return lifetime.ident != "static";
+    }
+    false
+  })
 }

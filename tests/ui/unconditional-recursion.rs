@@ -4,6 +4,4 @@ use thiserror::Error;
 #[error("{self}")]
 pub struct Error;
 
-fn main() {
-    __FAIL__;
-}
+fn main() {}

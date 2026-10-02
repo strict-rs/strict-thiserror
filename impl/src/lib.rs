@@ -1,35 +1,7 @@
-#![allow(
-    clippy::blocks_in_conditions,
-    clippy::cast_lossless,
-    clippy::cast_possible_truncation,
-    clippy::enum_glob_use,
-    clippy::expl_impl_clone_on_copy, // https://github.com/rust-lang/rust-clippy/issues/15842
-    clippy::manual_find,
-    clippy::manual_let_else,
-    clippy::manual_map,
-    clippy::map_unwrap_or,
-    clippy::module_name_repetitions,
-    clippy::needless_pass_by_value,
-    clippy::range_plus_one,
-    clippy::single_match_else,
-    clippy::struct_field_names,
-    clippy::too_many_lines,
-    clippy::wrong_self_convention
-)]
-#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
+//! Parse, validate, and derive typed errors for the `thiserror` runtime.
 
-extern crate proc_macro;
-
-mod ast;
-mod attr;
-mod expand;
-mod fallback;
-mod fmt;
-mod generics;
-mod prop;
-mod scan_expr;
-mod unraw;
-mod valid;
+/// Internal syntax, validation, inference, and trait-emission engine.
+mod derive;
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -39,16 +11,27 @@ use quote::TokenStreamExt as _;
 use syn::DeriveInput;
 use syn::parse_macro_input;
 
-#[proc_macro_derive(Error, attributes(backtrace, error, from, source))]
-pub fn derive_error(input: TokenStream) -> TokenStream {
-  let input = parse_macro_input!(input as DeriveInput);
-  expand::derive(&input).into()
+/// Expand the complete native declaration through the internal derive engine.
+trait ErrorExpansion {
+  /// Return generated implementations or the declaration's primary compiler diagnostic.
+  fn expand_error(&self) -> proc_macro2::TokenStream;
 }
 
-#[allow(non_camel_case_types)]
-struct private;
+/// Derive `Error`, optional `Display`, and requested `From` implementations.
+#[allow(
+  clippy::single_call_fn,
+  reason = "rustc registers this procedural-macro entry point rather than calling it through Rust source"
+)]
+#[proc_macro_derive(Error, attributes(backtrace, error, from, source))]
+pub fn derive_error(input: TokenStream) -> TokenStream {
+  let declaration = parse_macro_input!(input as DeriveInput);
+  declaration.expand_error().into()
+}
 
-impl ToTokens for private {
+/// Emit the versioned runtime namespace shared with the root crate's generated module.
+struct Private;
+
+impl ToTokens for Private {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     tokens.append(Ident::new(concat!("__private", env!("CARGO_PKG_VERSION_PATCH")), Span::call_site()));
   }

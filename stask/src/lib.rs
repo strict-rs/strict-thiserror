@@ -15,21 +15,24 @@ pub fn run() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+  use std::ops::ControlFlow;
+
   use strict_test_support::PredicateFailure;
   use strict_test_support::ensure_that;
+  use template_core::cli::command::CommandSet;
   use template_core::cli::command::CommandSurface;
-  use template_stask::ExtensionCommandSet;
+  use template_core::cli::parse::ParseReport;
 
   use super::extensions;
 
-  /// Complete extension registration outcome retained by the composition check.
-  type Registration = template_stask::Result<ExtensionCommandSet>;
+  /// Complete native extension registration result retained by assertions.
+  type Registration = template_stask::Result<CommandSet<ControlFlow<ParseReport>>>;
 
   #[test]
-  fn extension_registry_exposes_only_the_local_x_router() -> Result<(), Box<PredicateFailure<Registration>>> {
+  fn extension_registry_exposes_only_the_local_x_router() -> Result<(), PredicateFailure<Registration>> {
     ensure_that(
       extensions::commands(),
-      "the consumer runner must expose only the local x extension surface",
+      "the local extension registry must build and expose only the local x extension surface",
       |registration| {
         registration.as_ref().is_ok_and(|command_set| {
           let descriptors = command_set.descriptors();
@@ -41,6 +44,5 @@ mod tests {
       },
     )
     .map(drop)
-    .map_err(Box::new)
   }
 }

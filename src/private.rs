@@ -1,6 +1,6 @@
 #[doc(hidden)]
 pub use core::error::Error;
-#[cfg(all(feature = "std", not(thiserror_no_backtrace_type)))]
+#[cfg(feature = "std")]
 #[doc(hidden)]
 pub use std::backtrace::Backtrace;
 
